@@ -169,16 +169,17 @@ class Framework_Utils {
 	}
 
 	public String maskFields(String body, String projectName, String integrationID, String vmField = "loggerSensitiveFields")  {
-		return maskFields(body, projectName, integrationID, vmField, message, messageLog)
+        def jsonObject   = new JsonSlurper().parseText(body)
+        def mappedValue  = Framework_ValueMaps.interfaceVM(vmField, projectName, integrationID, "", message, messageLog)
+        def sensitiveFields = mappedValue.split(',').collect { it.trim().toLowerCase() }
+		jsonObject = maskSensitiveFields(jsonObject, sensitiveFields)
+		return JsonOutput.prettyPrint(JsonOutput.toJson(jsonObject))
 	}
 
 	public static String maskFields(
 		String body, String projectName, String integrationID, String vmField = "loggerSensitiveFields", Message message, MessageLog messageLog) {
-        def jsonObject   = new JsonSlurper().parseText(body)
-        def mappedValue  = Framework_ValueMaps.interfaceVM(vmField, projectName, integrationID, "", message, messageLog)
-        def sensitiveFields = mappedValue.split(',').collect { it.trim().toLowerCase() }
-        jsonObject = maskSensitiveFields(jsonObject, sensitiveFields)
-        return JsonOutput.prettyPrint(JsonOutput.toJson(jsonObject))
+    	def utilsInstance = new Framework_Utils(message, messageLog)
+		return utilsInstance.maskFields(body, projectName, integrationID, vmField)
 	}
 
     def maskSensitiveFields(def json, List<String> sensitiveFields) {

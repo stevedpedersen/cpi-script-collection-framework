@@ -1,11 +1,13 @@
 package src.main.resources.script
 
 import com.sap.gateway.ip.core.customdev.util.Message
-import src.main.resources.script.Framework_Logger
-import src.main.resources.script.Constants
-import src.main.resources.script.Framework_ValueMaps
+import com.sap.it.api.msglog.MessageLog
 import groovy.json.JsonSlurper
 import java.net.URLEncoder
+
+import src.main.resources.script.Framework_ValueMaps
+import src.main.resources.script.Framework_Logger
+import src.main.resources.script.Constants
 
 class Framework_Notifications {
     Message message
@@ -57,12 +59,13 @@ class Framework_Notifications {
         }
         
         // Filter specified emailFilterValues logs only
+        def logger = new Framework_Logger(message, messageLog)
         def emailFilterValues = interfaceVM("emailFilterValues", projectName, integrationID, "ERROR")
         def filterValues = emailFilterValues.toUpperCase().split(",").collect {
-            Framework_Logger.normalizeLogLevels(it.trim())
+            Framework_Logger.normalizeLogLevel(it.trim(), logger)
         }
         def filteredItems = jsonObject.messages.findAll { 
-            def itemLevel = Framework_Logger.normalizeLogLevels(it.logLevel)
+            def itemLevel = Framework_Logger.normalizeLogLevel(it.logLevel, logger)
             filterValues.contains(itemLevel)
         }
         jsonObject.messages = filteredItems
@@ -70,8 +73,6 @@ class Framework_Notifications {
         // Build the HTML table
         def htmlTable = jsonToHtmlTable(jsonObject)
         message.setBody(htmlTable)
-
-        return message
     }
 
     def interfaceVM(String key, String projectName, String integrationID, def defaultValue = "") {
@@ -132,40 +133,4 @@ class Framework_Notifications {
             .split(' ').collect { it.capitalize() }.join(' ')
             .replaceAll(/([a-z])([A-Z])/, '$1 $2').capitalize()
     }
-
-    private String frameworkVM(String key, String defaultValue = null) {
-        try {
-            return getValueMapping(key, Constants.ILCD.VM_GLOBAL_SRC_ID, Constants.ILCD.VM_GLOBAL_TRGT_ID) ?: defaultValue
-        } catch (Exception e) {
-            Framework_Logger.handleScriptError(message, messageLog, e, "Framework_Notifications.frameworkVM", false)
-            return defaultValue
-        }
-    }
-    private String interfaceVM(String key, String projectName, String integrationID, String defaultValue = null) {
-        try {
-            return getValueMapping(key, projectName, integrationID) ?: defaultValue
-        } catch (Exception e) {
-            handleScriptError(message, messageLog, e, "Framework_Notifications.safeGetValueMapping", false)
-            return defaultValue
-        }
-    }
-
-    def getValueMapping(String srcKey, String srcId, String targetId) {
-        try {
-            def api = ITApiFactory.getApi(ValueMappingApi.class, null)
-            return api?.getMappedValue(Constants.ILCD.VM_SRC_AGENCY, srcId, srcKey, Constants.ILCD.VM_TRGT_AGENCY, targetId) ?: ""
-        } catch (Exception e) {
-            def fields = """\n\n
-                Source Agency:      ${srcAgency}\n
-                Source Identifier:  ${srcId}\n
-                Source Value:       ${srcKey}\n
-                Target Agency:      ${targetAgency}\n
-                Target Identifier:  ${targetId}\n
-            """
-            handleScriptError(message, messageLog, e, "Framework_Notifications.getValueMapping", true, fields)
-            throw e
-        }
-    }
 }
-
-

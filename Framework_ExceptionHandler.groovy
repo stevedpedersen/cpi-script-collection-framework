@@ -2,7 +2,7 @@ package src.main.resources.script
 
 import com.sap.gateway.ip.core.customdev.util.Message
 import com.sap.it.api.msglog.MessageLog
-import org.slf4j.LoggerFactory
+// import org.slf4j.LoggerFactory
 import java.io.StringWriter
 import java.io.PrintWriter
 import groovy.json.JsonSlurper

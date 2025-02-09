@@ -1,11 +1,13 @@
 package src.main.resources.script
 
 import com.sap.gateway.ip.core.customdev.util.Message
+import com.sap.it.api.msglog.MessageLog
+import org.apache.commons.io.input.BOMInputStream
+import groovy.xml.*
+
 import src.main.resources.script.Framework_ValueMaps
 import src.main.resources.script.Framework_Logger
 import src.main.resources.script.Constants
-import com.sap.it.api.msglog.MessageLog
-import groovy.xml.*
 
 class Framework_Validator {
     Message message
@@ -13,6 +15,7 @@ class Framework_Validator {
     Map<String, List<String>> failedRecords  // Track validation errors per record
     String projectName
     String integrationID
+    Framework_Logger logger
 
     static final String ID_UNKNOWN = "unknown"
 
@@ -20,9 +23,22 @@ class Framework_Validator {
         this.message = message
         this.messageLog = messageLog
         this.failedRecords = [:]  // Initialize empty map for failed records
+        this.logger = new Framework_Logger(message, messageLog)
     }
 
-    def void logValidationResults(boolean raiseException = false) {
+    def void assertPayloadValid(boolean raiseException = false) {
+        def validationErrorMessage = (message.getProperty("validationErrorMessage") ?: "")?.trim()
+        if (!validationErrorMessage) {
+            logValidationResults(raiseException, false)
+        } else if (validationErrorMessage && raiseException) {
+            throw new SchemaValidationException(validationErrorMessage)
+        }
+        if (messageLog) {
+            messageLog.setStringProperty("VALIDATION_SUCCESS", "Mandatory field validation success")
+        }
+    }
+
+    def void logValidationResults(boolean raiseException = false, boolean shouldLog = true) {
         def validationErrorMessage
         try {
             def xmlInput = message.getBody(java.io.InputStream)
@@ -37,11 +53,15 @@ class Framework_Validator {
                 def recordErrors = records.collect{ it.split(Constants.ILCD.Validator.MM_ERROR_PREFIX) }
 
                 message.setProperty("validationErrorMessage", validationErrorMessage)
-                log(message, "VALIDATION_ERROR", "WARN",
-                    Constants.ILCD.Validator.LOG_WARN_MSG + validationErrorMessage.substring(0, 20) + "...")
+                if (shouldLog) {
+                    this.logger.logMessage("VALIDATION_ERROR", "WARN",
+                        Constants.ILCD.Validator.LOG_WARN_MSG + validationErrorMessage.substring(0, 20) + "...")
+                }
             } else {
-                log(message, "VALIDATION_SUCCESS", "TRACE",
-                    message.properties.text ?: Constants.ILCD.Validator.LOG_INFO_MSG)
+                if (shouldLog) {
+                    this.logger.logMessage("VALIDATION_SUCCESS", "TRACE",
+                        message.properties.text ?: Constants.ILCD.Validator.LOG_INFO_MSG)
+                }
             }
         } catch (Exception e) {
             Framework_Logger.handleScriptError(message, messageLog, e, "Framework_Validator.logValidationResults", true)

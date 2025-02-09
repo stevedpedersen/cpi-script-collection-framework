@@ -22,24 +22,8 @@ def Message withoutException(Message message) {
  * Validates fields and conditionally throws an exception for failures.
  */
 def Message validateFields(Message message, boolean throwException) {
-    def validationErrorMessage = null
-    try {
-        // Check for validation errors and handle accordingly
-        def validator = new Framework_Validator(message, messageLogFactory.getMessageLog(message))
-        def xmlInput = message.getBody(java.io.InputStream)
-        validationErrorMessage = validator.getValidationErrors(xmlInput)
-
-        if (validationErrorMessage) {
-            message.setProperty("validationErrorMessage", validationErrorMessage)
-        }
-    } catch (Exception e) {
-        Framework_Logger.handleScriptError(message, messageLogFactory.getMessageLog(message), e, "VALIDATE_PAYLOAD", true)
-    }
- 
-    if (validationErrorMessage && throwException) {
-        Framework_Validator.throwValidationError(validationErrorMessage)
-    }
-
+    def validator = new Framework_Validator(message, messageLogFactory.getMessageLog(message))
+    validator.assertPayloadValid(throwException)
     return message
 }
 

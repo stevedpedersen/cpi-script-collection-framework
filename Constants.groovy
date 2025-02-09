@@ -11,24 +11,24 @@ class Constants {
         static final String SAP_MPL_ID          = "SAP_MessageProcessingLogID"
         static final String SAP_ERR_STEP_ID     = "SAP_ErrorModelStepID"
         static final String SAP_IS_REDELIVERY_ENABLED = "SAP_isComponentRedeliveryEnabled"
-        static final String CAMEL_EXC_CAUGHT = "CamelExceptionCaught"
-        static final String AEM_RMID = "ReplicationGroupMessageID"
+        static final String CAMEL_EXC_CAUGHT    = "CamelExceptionCaught"
+        static final String AEM_RMID            = "ReplicationGroupMessageID"
     }
 
     // Constants.Header - Standard + Commonly Used Headers
     static class Header {
         static final String SAP_CORRELATION_ID  = "SAP_MplCorrelationId"
         static final String SAP_MESSAGE_TYPE    = "SAP_MessageType"
-        static final String SAP_APP_ID  = "SAP_ApplicationID"
+        static final String SAP_APP_ID          = "SAP_ApplicationID"
         static final String SAP_SENDER          = "SAP_Sender"
         static final String SAP_RECEIVER        = "SAP_Receiver"
         static final String CAMEL_RESPONSE_CODE = "CamelHttpResponseCode" 
-        static final String CHARSET_UTF8      = "charset=utf-8"
-        static final String CONTENT_TYPE      = "Content-Type"
-        static final String CONTENT_TYPE_XML  = "application/xml"
-        static final String CONTENT_TYPE_JSON = "application/json"
-        static final String CONTENT_TYPE_TEXT = "text/plain"
-        static final String HAS_ERROR         = "HasError"
+        static final String CHARSET_UTF8        = "charset=utf-8"
+        static final String CONTENT_TYPE        = "Content-Type"
+        static final String CONTENT_TYPE_XML    = "application/xml"
+        static final String CONTENT_TYPE_JSON   = "application/json"
+        static final String CONTENT_TYPE_TEXT   = "text/plain"
+        static final String HAS_ERROR           = "HasError"
     }
 
     // Constants.ILCD - Headers + Properties + Variables + anything else unique to ILCD
@@ -42,7 +42,7 @@ class Constants {
         static final String LOG_STACK_PROPERTY  = "messageLog"
         static final String LOG_COUNT           = "framework_internal_log_counter"
         static final String EXC_PREFIX          = "ILCD_EXC"
-        static final String EXC_SUFFIC          = "SCRIPT_ERROR"
+        static final String EXC_SUFFIX          = "SCRIPT_ERROR"
         static final String ATTACH_DISABLED     = "LOG_ATTACHMENTS_DISABLED"
         static final String ATTACH_DISABLED_MSG = 
             "Log attachments are currently DISABLED. To enable, change the `setting_attachmentsDisabled` flag in the ${VM_GLOBAL_TRGT_ID} value map."
@@ -75,6 +75,9 @@ class Constants {
             static final String VM_KEYS_XML_PK = "xmlPrimaryKey"
             static final String VM_KEYS_XML_HEADERS = "xmlHeaders"
             static final String VM_KEYS_XML_SPLIT = "xmlSplitterNode"
+            static final String LOG_INFO_MSG = "Successful mandatory field validation"
+            static final String LOG_WARN_MSG = "Failed mandatory field validation"
+            static final String ERR_MSG_PROP = "validationErrorMessage"
         }
         // Constants.ILCD.Batch
         static class Batch {

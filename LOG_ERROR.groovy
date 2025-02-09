@@ -2,6 +2,13 @@ import com.sap.gateway.ip.core.customdev.util.Message
 import src.main.resources.script.Framework_ExceptionHandler
 import src.main.resources.script.Framework_Logger
 
+/**
+ * Sets error details on the custom headers and makes the following properties available:
+ *  - errorResponseMessage
+ *  - errorStatusCode
+ *  - errorExceptionMessage
+ *  - errorExceptionClass
+ */
 def Message processData(Message message) {
     def messageLog = messageLogFactory.getMessageLog(message)
     try {  

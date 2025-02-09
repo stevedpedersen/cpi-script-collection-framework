@@ -31,17 +31,18 @@ class Framework_ValueMaps {
 
     public static String frameworkVM(String key, String defaultValue = null, Message message, MessageLog messageLog) {
         try {
-            return getValueMapping(key, Constants.ILCD.VM_GLOBAL_SRC_ID, Constants.ILCD.VM_GLOBAL_TRGT_ID, message, messageLog) ?: defaultValue
+            def valueMapsInstance = new Framework_ValueMaps(message, messageLog) 
+            return valueMapsInstance.getValueMapping(key, Constants.ILCD.VM_GLOBAL_SRC_ID, Constants.ILCD.VM_GLOBAL_TRGT_ID) ?: defaultValue
         } catch (Exception e) {
             Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.frameworkVM", false)
             return defaultValue
         }
     }
 
-    public static String interfaceVM(
-        String key, String projectName, String integrationID, String defaultValue = null, Message message, MessageLog messageLog) {
+    public static String interfaceVM(String key, String projectName, String integrationID, String defaultValue = null, Message message, MessageLog messageLog) {
         try {
-            return getValueMapping(key, projectName, integrationID, message, messageLog) ?: defaultValue
+            def valueMapsInstance = new Framework_ValueMaps(message, messageLog)  // ✅ Create an instance
+            return valueMapsInstance.getValueMapping(key, projectName, integrationID) ?: defaultValue
         } catch (Exception e) {
             Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.interfaceVM", false)
             return defaultValue

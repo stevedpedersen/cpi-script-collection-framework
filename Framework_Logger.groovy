@@ -228,7 +228,11 @@ class Framework_Logger {
         return logLevelsHierarchy[itemLogLevel] >= logLevelsHierarchy[configuredLogLevel]
     }
 
-    def static String normalizeLogLevel(String level) {
+    def static String normalizeLogLevel(String level, Framework_Logger loggerInstance) {
+        return loggerInstance?.normalizeLogLevel(level) ?: loggerInstance?.settings?.defaultLogLevel
+    }
+
+    def String normalizeLogLevel(String level) {
         switch (level?.toUpperCase()) {
             case ["E", "ERROR"]:
                 return "ERROR"
@@ -443,7 +447,7 @@ class Framework_Logger {
     }
 
     private String frameworkVM(String key, String defaultValue = null) {
-        Framework_ValueMaps.interfaceVM(key, defaultValue, message, messageLog)
+        Framework_ValueMaps.frameworkVM(key, defaultValue, message, messageLog)
     }
 
     def static String getStackTrace(Exception e) {
@@ -507,7 +511,7 @@ class Framework_Logger {
             errorMessage += "Stack Trace:\n" + Framework_ExceptionHandler.getStackTrace(e)
         }
 
-        def charLimit = message.getProperty("charLimit")?.toInteger() ?: 1000
+        def charLimit = message.getProperty("charLimit")?.toInteger() ?: 2000
         if (errorMessage.length() > charLimit) {
             errorMessage = errorMessage.substring(0, charLimit) + "... (truncated)"
         }
