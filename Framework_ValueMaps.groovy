@@ -18,20 +18,32 @@ class Framework_ValueMaps {
         this.messageLog = messageLog
     }
 
-    public static String frameworkVM(String key, String defaultValue = null) {
+    /**
+     * This is to ensure that the required fields are set by developers. 
+     */
+    public static void validateMetadataIdentifiers(String projectName, String integrationID) {
+        if (!projectName || !integrationID) {
+            throw new FrameworkMetadataException(
+                "Undefined framework identifier values - projectName: ${projectName} | integrationID: ${integrationID}."
+            )
+        }
+    }
+
+    public static String frameworkVM(String key, String defaultValue = null, Message message, MessageLog messageLog) {
         try {
-            return getValueMapping(key, Constants.ILCD.VM_GLOBAL_SRC_ID, Constants.ILCD.VM_GLOBAL_TRGT_ID) ?: defaultValue
+            return getValueMapping(key, Constants.ILCD.VM_GLOBAL_SRC_ID, Constants.ILCD.VM_GLOBAL_TRGT_ID, message, messageLog) ?: defaultValue
         } catch (Exception e) {
             Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.frameworkVM", false)
             return defaultValue
         }
     }
 
-    public static String interfaceVM(String key, String projectName, String integrationID, String defaultValue = null) {
+    public static String interfaceVM(
+        String key, String projectName, String integrationID, String defaultValue = null, Message message, MessageLog messageLog) {
         try {
-            return getValueMapping(key, projectName, integrationID) ?: defaultValue
+            return getValueMapping(key, projectName, integrationID, message, messageLog) ?: defaultValue
         } catch (Exception e) {
-            Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.safeGetValueMapping", false)
+            Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.interfaceVM", false)
             return defaultValue
         }
     }
@@ -50,6 +62,15 @@ class Framework_ValueMaps {
             """
             Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.getValueMapping", true, fields)
             throw e
+        }
+    }
+
+    static class FrameworkMetadataException extends RuntimeException {
+        FrameworkMetadataException(String message) {
+            super(message)
+        }
+        Throwable getCause() {
+            return new Throwable("FrameworkMetadataException: Invalid metadata configuration for projectName/integrationID.")
         }
     }
 }

@@ -8,30 +8,26 @@ class Constants {
         static final String MPL_LEVEL_INTERNAL  = "SAP_MPL_LogLevel_Internal"
         static final String MPL_LEVEL_OVERALL   = "SAP_MPL_LogLevel_Overall"
         static final String MPL_LEVEL_EXTERNAL  = "SAP_MPL_LogLevel_External"
-
-        static final String SAP_MPL_ID              = "SAP_MessageProcessingLogID"
-        static final String SAP_ERROR_MODEL_STEP_ID = "SAP_ErrorModelStepID"
+        static final String SAP_MPL_ID          = "SAP_MessageProcessingLogID"
+        static final String SAP_ERR_STEP_ID     = "SAP_ErrorModelStepID"
         static final String SAP_IS_REDELIVERY_ENABLED = "SAP_isComponentRedeliveryEnabled"
-
         static final String CAMEL_EXC_CAUGHT = "CamelExceptionCaught"
+        static final String AEM_RMID = "ReplicationGroupMessageID"
     }
 
     // Constants.Header - Standard + Commonly Used Headers
     static class Header {
         static final String SAP_CORRELATION_ID  = "SAP_MplCorrelationId"
         static final String SAP_MESSAGE_TYPE    = "SAP_MessageType"
-        static final String SAP_APPLICATION_ID  = "SAP_ApplicationID"
+        static final String SAP_APP_ID  = "SAP_ApplicationID"
         static final String SAP_SENDER          = "SAP_Sender"
         static final String SAP_RECEIVER        = "SAP_Receiver"
-        
-        static final String CAMEL_RESPONSE_CODE = "CamelHttpResponseCode"
-        
+        static final String CAMEL_RESPONSE_CODE = "CamelHttpResponseCode" 
         static final String CHARSET_UTF8      = "charset=utf-8"
         static final String CONTENT_TYPE      = "Content-Type"
         static final String CONTENT_TYPE_XML  = "application/xml"
         static final String CONTENT_TYPE_JSON = "application/json"
         static final String CONTENT_TYPE_TEXT = "text/plain"
-
         static final String HAS_ERROR         = "HasError"
     }
 
@@ -43,10 +39,13 @@ class Constants {
         static final String VM_TRGT_AGENCY      = "Output"
         static final String VM_GLOBAL_SRC_ID    = "IP_FoundationFramework"
         static final String VM_GLOBAL_TRGT_ID   = "VM_Framework_Global_Metadata"
-
-        static final String LOG_COUNTER_PROPERTY = "framework_internal_log_counter"
-        static final String ILCD_ERROR_PREFIX   = "ILCD_EXC"
-        static final String ILCD_ERROR_SUFFIX   = "SCRIPT_ERROR"
+        static final String LOG_STACK_PROPERTY  = "messageLog"
+        static final String LOG_COUNT           = "framework_internal_log_counter"
+        static final String EXC_PREFIX          = "ILCD_EXC"
+        static final String EXC_SUFFIC          = "SCRIPT_ERROR"
+        static final String ATTACH_DISABLED     = "LOG_ATTACHMENTS_DISABLED"
+        static final String ATTACH_DISABLED_MSG = 
+            "Log attachments are currently DISABLED. To enable, change the `setting_attachmentsDisabled` flag in the ${VM_GLOBAL_TRGT_ID} value map."
 
         static final List<String> META_FIELDS_TO_CUSTOM_HEADERS = [
             "integrationID",

@@ -7,6 +7,7 @@ import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 import groovy.xml.MarkupBuilder
 import src.main.resources.script.Framework_Logger
+import src.main.resources.script.Framework_ValueMaps
 import src.main.resources.script.Constants
 
 
@@ -26,22 +27,20 @@ class Framework_Utils {
 
     def String formatResponseXml() {
     	this.message.setHeader(Constants.Header.CONTENT_TYPE, Constants.Header.CONTENT_TYPE_XML)
-
     	try {
     		return formatResponse("xml")
     	} catch (Exception e) {
-    		Framework_Logger.handleScriptError(this.message, this.messageLog, e, "Framework_Utils.formatResponseXml()", false)
+    		Framework_Logger.handleScriptError(this.message, this.messageLog, e, "Framework_Utils.formatResponseXml", false)
     		throw e
     	}
     }
 
     def String formatResponseJson() {
     	this.message.setHeader(Constants.Header.CONTENT_TYPE, Constants.Header.CONTENT_TYPE_JSON)
-
     	try {
     		return formatResponse("json")
     	} catch (Exception e) {
-    		Framework_Logger.handleScriptError(this.message, this.messageLog, e, "Framework_Utils.formatResponseJson()", false)
+    		Framework_Logger.handleScriptError(this.message, this.messageLog, e, "Framework_Utils.formatResponseJson", false)
     		throw e
     	}
     }
@@ -168,4 +167,33 @@ class Framework_Utils {
 	    ]
 	    return JsonOutput.toJson(response)
 	}
+
+	public String maskFields(String body, String projectName, String integrationID, String vmField = "loggerSensitiveFields")  {
+		return maskFields(body, projectName, integrationID, vmField, message, messageLog)
+	}
+
+	public static String maskFields(
+		String body, String projectName, String integrationID, String vmField = "loggerSensitiveFields", Message message, MessageLog messageLog) {
+        def jsonObject   = new JsonSlurper().parseText(body)
+        def mappedValue  = Framework_ValueMaps.interfaceVM(vmField, projectName, integrationID, "", message, messageLog)
+        def sensitiveFields = mappedValue.split(',').collect { it.trim().toLowerCase() }
+        jsonObject = maskSensitiveFields(jsonObject, sensitiveFields)
+        return JsonOutput.prettyPrint(JsonOutput.toJson(jsonObject))
+	}
+
+    def maskSensitiveFields(def json, List<String> sensitiveFields) {
+        if (json instanceof Map) {
+            json.each { key, value ->
+                if (sensitiveFields.contains(key.toLowerCase())) {
+                    int maskLength = (value instanceof String) ? Math.min(16, value.length()) : 8
+                    json[key] = '*' * maskLength
+                } else {
+                    json[key] = maskSensitiveFields(value, sensitiveFields)
+                }
+            }
+        } else if (json instanceof List) {
+            json = json.collect { maskSensitiveFields(it, sensitiveFields) }
+        }
+        return json
+    }
 }	

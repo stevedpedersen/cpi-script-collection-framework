@@ -1,11 +1,10 @@
 package src.main.resources.script
 
 import com.sap.gateway.ip.core.customdev.util.Message
+import src.main.resources.script.Framework_ValueMaps
 import src.main.resources.script.Framework_Logger
 import src.main.resources.script.Constants
 import com.sap.it.api.msglog.MessageLog
-import com.sap.it.api.ITApiFactory
-import com.sap.it.api.mapping.ValueMappingApi
 import groovy.xml.*
 
 class Framework_Validator {
@@ -15,13 +14,42 @@ class Framework_Validator {
     String projectName
     String integrationID
 
-
     static final String ID_UNKNOWN = "unknown"
 
     Framework_Validator(Message message, MessageLog messageLog) {
         this.message = message
         this.messageLog = messageLog
         this.failedRecords = [:]  // Initialize empty map for failed records
+    }
+
+    def void logValidationResults(boolean raiseException = false) {
+        def validationErrorMessage
+        try {
+            def xmlInput = message.getBody(java.io.InputStream)
+            def bomStream = new BOMInputStream(xmlInput)
+            // Force skip the BOM if one is present
+            bomStream.getBOM()
+            validationErrorMessage = getValidationErrors(bomStream)
+
+            // Log the result
+            if (validationErrorMessage) {
+                def records = validationErrorMessage.split(/\[\w*?\]:/)
+                def recordErrors = records.collect{ it.split(Constants.ILCD.Validator.MM_ERROR_PREFIX) }
+
+                message.setProperty("validationErrorMessage", validationErrorMessage)
+                log(message, "VALIDATION_ERROR", "WARN",
+                    Constants.ILCD.Validator.LOG_WARN_MSG + validationErrorMessage.substring(0, 20) + "...")
+            } else {
+                log(message, "VALIDATION_SUCCESS", "TRACE",
+                    message.properties.text ?: Constants.ILCD.Validator.LOG_INFO_MSG)
+            }
+        } catch (Exception e) {
+            Framework_Logger.handleScriptError(message, messageLog, e, "Framework_Validator.logValidationResults", true)
+        }
+
+        if (validationErrorMessage && raiseException) {
+            throw new SchemaValidationException(validationErrorMessage)
+        }
     }
 
     def String getValidationErrors(def xmlInput) {
@@ -59,9 +87,8 @@ class Framework_Validator {
         } catch (SchemaValidationException ve) {
             // Re-throw intentional validation errors
             throw ve
-
         } catch (Exception e) {
-            // Handle unexpected errors with Framework_Logger
+            // Handle unexpected errors
             Framework_Logger.handleScriptError(message, messageLog, e, "Framework_Validator.getValidationErrors", true)
             throw e
         }
@@ -70,9 +97,9 @@ class Framework_Validator {
         if (!this.failedRecords.isEmpty()) {
             return constructValidationErrorReport()
         }
-
         return null
     }
+
     def safeParseXmlInput(def input) {
         def xml
         try {
@@ -83,10 +110,9 @@ class Framework_Validator {
             if (input instanceof InputStream) {
                 xml = slurper.parse(input)
             } else {
-                // input is presumably a String fallback
+                // String fallback
                 xml = slurper.parseText(input.toString())
             }
-
         } catch (Exception slurperError) {
             // fallback with XmlParser: read the entire input as string, do any cleaning, parse
             String fallbackText
@@ -108,6 +134,7 @@ class Framework_Validator {
         }
         return xml
     }
+
     // Extract a value from node or attribute text
     def String getNodeOrAttributeValue(def node, String nodeName) {
         def (tag, attr) = nodeName.contains("@") ? nodeName.split("@") : [nodeName, null]
@@ -128,9 +155,8 @@ class Framework_Validator {
         return result
     }
 
-    // Fetch XML fields from the value map
+    // Users can provide expected XML node names/attributes, allowing for a more advanced parsing result
     def List<String> fetchXmlFieldsFromValueMap() {
-        def vm = ITApiFactory.getApi(ValueMappingApi.class, null)
         def fields = [
             Constants.ILCD.Validator.VM_KEYS_XML_ROOT, 
             Constants.ILCD.Validator.VM_KEYS_XML_PK, 
@@ -141,13 +167,13 @@ class Framework_Validator {
 
         return fields.collect { fieldKey ->
             try {
-                vm.getMappedValue("Input", this.projectName, fieldKey, "Output", this.integrationID)
+                Framework_ValueMaps.interfaceVM(
+                    fieldKey, this.projectName, this.integrationID, this.message, this.messageLog)
             } catch (Exception ignored) {
                 null
             }
         }
     }
-
 
     void initValueMapIdentifiers() {
         this.projectName = this.projectName ? this.projectName : this.message.getProperty(Constants.ILCD.VM_SRC_ID)
@@ -163,13 +189,6 @@ class Framework_Validator {
                 .join('\n')
         } catch (Exception e) {
             this.failedRecords.collect { key, value -> ${value.join(', ')} }.join('\n')
-        }
-    }
-
-    // Throw a custom validation error if validation fails
-    def handleValidationError() {
-        if (this.failedRecords) {
-            handleValidationError(constructValidationErrorReport())
         }
     }
 

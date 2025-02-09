@@ -28,22 +28,22 @@ class Framework_Notifications {
         def projectName = properties.getOrDefault("projectName", jsonObject?.projectName) ?: ""
         def integrationID = properties.getOrDefault("integrationID", jsonObject?.integrationID) ?: ""
 
-        def meta_environment = Framework_ValueMaps.frameworkVM("meta_environment", System.getenv("TENANT_NAME"))
-        def meta_integrationName = Framework_ValueMaps.interfaceVM("meta_integrationName", projectName, integrationID, integrationID)
-        def emailRecipients = Framework_ValueMaps.interfaceVM("emailRecipients", projectName, integrationID, 
-            Framework_ValueMaps.interfaceVM("emailRecepients", projectName, integrationID, ""))                          
+        def meta_environment = Framework_ValueMaps.frameworkVM("meta_environment", System.getenv("TENANT_NAME"), message, messageLog)
+        def meta_integrationName = interfaceVM("meta_integrationName", projectName, integrationID, integrationID)
+        def emailRecipients = interfaceVM("emailRecipients", projectName, integrationID, 
+            interfaceVM("emailRecepients", projectName, integrationID, ""))                          
         message.setProperty("emailRecipients", emailRecipients)
 
         String emailSubject = "BTP CI - ${meta_environment} - ${meta_integrationName}"
         message.setProperty("emailSubject", emailSubject)
 
         // Generate an HTML table row containing a link to the MPL/cALM dashboard for this message
-        def correlationID = jsonObject?.correlationID ?: headers.get(Constants.Header.SAP_CORRELATION_ID) ?: properties.get("correlationID")
+        def correlationID = jsonObject?.correlationID ?: headers.get(Constants.Header.SAP_CORRELATION_ID)
         def messageID = jsonObject?.messageID ?: properties.get(Constants.Property.SAP_MPL_ID)
         
         // Function to convert JSON to HTML table
-        def labelStyle = "style='width:20%;text-align:left;padding:2px;font-size:1.1rem;'"
-        def monitorLinks = getLinksForObservabilityTools(message, correlationID ?: messageID, labelStyle)
+        def labelStyle = "style='width:25%;text-align:left;'"
+        def monitorLinks = getLinksForObservabilityTools(message, correlationID ?: messageID ?: "UnknownID", labelStyle)
         def jsonToHtmlTable = { jsonObj ->
             def tableHtml = new StringBuilder()
             tableHtml.append("<table border='1'>${monitorLinks}")
@@ -74,6 +74,10 @@ class Framework_Notifications {
         return message
     }
 
+    def interfaceVM(String key, String projectName, String integrationID, def defaultValue = "") {
+        Framework_ValueMaps.interfaceVM(key, projectName, integrationID, defaultValue, message, messageLog)
+    }
+
     /**
      * Takes a List of Map and produces one-dimensional HTML description lists. 
      */
@@ -81,7 +85,7 @@ class Framework_Notifications {
         def error = "style='color:${Constants.Style.JNJ_RED_HEX}!important'"
         def sb = new StringBuilder()
         messages.each { msgMap ->
-            sb.append("<dl>")
+            sb.append("<dl style='font-size:0.8rem'>")
             msgMap.each { k, v ->
                 def style = k.equalsIgnoreCase("loglevel") ? error : ""
                 sb.append("<dt><b ${style}>${k}</b></dt>")
@@ -116,7 +120,6 @@ class Framework_Notifications {
                 mpl = "<tr><th ${labelStyle}><b>Message Processing Log URL</b></th><td>${mplAnchorTag}</td></tr>"
             }
         }
-        
         return mpl + cALM;
     }
 
@@ -128,10 +131,6 @@ class Framework_Notifications {
             .replaceAll("_", " ")
             .split(' ').collect { it.capitalize() }.join(' ')
             .replaceAll(/([a-z])([A-Z])/, '$1 $2').capitalize()
-    }
-
-    public void filterLogsForEmail() {
-
     }
 
     private String frameworkVM(String key, String defaultValue = null) {

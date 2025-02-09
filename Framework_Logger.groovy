@@ -2,8 +2,6 @@ package src.main.resources.script
 
 import com.sap.gateway.ip.core.customdev.util.Message
 import com.sap.it.api.msglog.MessageLog
-import com.sap.it.api.ITApiFactory
-import com.sap.it.api.mapping.ValueMappingApi
 import groovy.json.JsonBuilder
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
@@ -12,7 +10,11 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import org.slf4j.LoggerFactory
+
 import src.main.resources.script.Framework_ExceptionHandler
+import src.main.resources.script.Framework_ValueMaps
+import src.main.resources.script.Framework_Utils
+import src.main.resources.script.Constants
 
 class Framework_Logger {
     Map entries = [
@@ -39,24 +41,12 @@ class Framework_Logger {
         customHeaderExtraKeys       : "10",
         customHeaderBatchSummaryLimit  : "2000",
     ]
-
     Map systemInfo = [:]
 
     // Value-mapping agencies / placeholders
-    static final String VM_INPUT          = "Input"
-    static final String VM_OUTPUT         = "Output"
-    static final String VM_GLOBAL_INPUT   = "IP_FoundationFramework"
-    static final String VM_GLOBAL_OUTPUT  = "VM_Framework_Global_Metadata"
     static final String CONTENT_TYPE_JSON = "application/json"
-    static final String LOG_COUNTER_PROPERTY = "framework_internal_log_counter"
     static final String CUSTOM_STATUS_FAILED   = "Failed"
-    static final String ILCD_ERROR_PREFIX      = "ILCD_EXC"
-    static final String ILCD_ERROR_SUFFIX      = "SCRIPT_ERROR"
     static final int CUSTOM_HEADER_CHAR_LIMIT  = 200
-    static final String ATTACH_DISABLED_WARNING     = "LOG_ATTACHMENTS_DISABLED"
-    static final String ATTACH_DISABLED_WARNING_MSG = 
-        "Log attachments are currently DISABLED. To enable, change the `setting_attachmentsDisabled` flag in the ${VM_GLOBAL_OUTPUT} value map."
-
     private Map<String, String> metadataCache = [:]
 
     Framework_Logger(Message message, MessageLog messageLog) {
@@ -72,16 +62,15 @@ class Framework_Logger {
      */
     private def void initSettingsFromGlobalMetadata() {
         if (metadataCache.isEmpty()) {
-            metadataCache["attachmentsDisabled"]    = safeGetValueMapping("setting_attachmentsDisabled", VM_GLOBAL_INPUT, VM_GLOBAL_OUTPUT, "false")
-            metadataCache["attachmentLimit"]        = safeGetValueMapping("setting_attachmentLimit", VM_GLOBAL_INPUT, VM_GLOBAL_OUTPUT, "5")
-            metadataCache["charLimit"]              = safeGetValueMapping("setting_logCharLimit", VM_GLOBAL_INPUT, VM_GLOBAL_OUTPUT, "1000")
-            metadataCache["customHeaderCharLimit"]  = safeGetValueMapping("setting_customHeaderCharLimit", VM_GLOBAL_INPUT, VM_GLOBAL_OUTPUT, "50")
-            metadataCache["customHeaderExtraKeys"]  = safeGetValueMapping("setting_customHeaderExtraKeys", VM_GLOBAL_INPUT, VM_GLOBAL_OUTPUT, "10")
-            metadataCache["defaultLogLevel"]        = safeGetValueMapping("setting_defaultLogLevel", VM_GLOBAL_INPUT, VM_GLOBAL_OUTPUT, "INFO")
-            metadataCache["defaultOverallLogLevel"] = safeGetValueMapping("setting_defaultOverallLogLevel", VM_GLOBAL_INPUT, VM_GLOBAL_OUTPUT, "TRACE")
-            metadataCache["environment"]            = safeGetValueMapping("meta_environment", VM_GLOBAL_INPUT, VM_GLOBAL_OUTPUT, "Production")
+            metadataCache["attachmentsDisabled"]    = frameworkVM("setting_attachmentsDisabled", "false")
+            metadataCache["attachmentLimit"]        = frameworkVM("setting_attachmentLimit", "5")
+            metadataCache["charLimit"]              = frameworkVM("setting_logCharLimit", "1000")
+            metadataCache["customHeaderCharLimit"]  = frameworkVM("setting_customHeaderCharLimit", "50")
+            metadataCache["customHeaderExtraKeys"]  = frameworkVM("setting_customHeaderExtraKeys", "10")
+            metadataCache["defaultLogLevel"]        = frameworkVM("setting_defaultLogLevel", "INFO")
+            metadataCache["defaultOverallLogLevel"] = frameworkVM("setting_defaultOverallLogLevel", "TRACE")
+            metadataCache["environment"]            = frameworkVM("meta_environment", "Production")
         }
-
         this.settings.attachmentsDisabled = metadataCache["attachmentsDisabled"]
         this.settings.attachmentLimit = metadataCache["attachmentLimit"]
         this.settings.charLimit = metadataCache["charLimit"]
@@ -101,40 +90,37 @@ class Framework_Logger {
 
         def properties = this.message.getProperties()
         def headers    = this.message.getHeaders()
-        def projectName = properties.get("projectName")
-        def integrationID = properties.get("integrationID")
-
-        def mpl_logLevel = this.message.getProperty("SAP_MPL_LogLevel_Internal")
-        def vm_logLevel  = getValueMapping(VM_INPUT, projectName, "meta_logLevel", VM_OUTPUT, integrationID)
+        def projectName = properties.get(Constants.ILCD.VM_SRC_ID)
+        def integrationID = properties.get(Constants.ILCD.VM_TRGT_ID)
+        def messageLog = properties.get(Constants.ILCD.LOG_STACK_PROPERTY)
+        def mpl_logLevel = this.message.getProperty(Constants.Property.MPL_LEVEL_INTERNAL)
+        def vm_logLevel  = interfaceVM("meta_logLevel", projectName, integrationID)
         this.overallLogLevel = mpl_logLevel ?: vm_logLevel ?: this.settings.defaultOverallLogLevel
 
-        def messageLog = properties.get("messageLog")
-
+        // Begin constructing the log entry
         if (isLoggable(this.overallLogLevel, this.logLevel)) {
-            def messageId = this.message.getProperty("SAP_MessageProcessingLogID")
-            def errorLocation = properties.get("errorLocation")
-            def errorStepID = message.getProperty("SAP_ErrorModelStepID")
-            
-            if (this.logLevel?.toUpperCase() == "ERROR" && !errorLocation) {
-                def ex = this.message.getProperty("CamelExceptionCaught")
-                if (ex != null) {
-                    def exClass = ex?.getClass() ? ex.getClass()?.getCanonicalName() : ex?.getMessage()
-                    errorLocation = "SAP_ErrorModelStepID: ${errorStepID} | BTP CI Exception ${exClass}"
-                }
-            }
-
-            def itemData = [logLevel: this.logLevel]
+            def itemData = [logLevel: this.logLevel, text: (logData ? logData : "Log created at ${getTimestamp()}")]
             if (logData) {
                 itemData += [text: logData]
             }
+
+            def errorLocation = properties.get("errorLocation")
+            def errorStepID = message.getProperty(Constants.Property.SAP_ERR_STEP_ID)
             if (this.logLevel == "ERROR") {
+                if (!errorLocation) {
+                    def ex = this.message.getProperty(Constants.Property.CAMEL_EXC_CAUGHT)
+                    if (ex != null) {
+                        def exClass = ex?.getClass() ? ex.getClass()?.getCanonicalName() : ex?.getMessage()
+                        errorLocation = "${Constants.Property.SAP_ERR_STEP_ID}: ${errorStepID} | BTP CI Exception ${exClass}"
+                    }
+                }
                 itemData += [errorLocation: errorLocation, errorStepID: errorStepID]
             }
 
             def customLogFields = parseCustomAttributes(properties)
             def combinedLogMessage = [itemData].collect { it + customLogFields }
             def combinedLogMessages = (messageLog == null) ? combinedLogMessage : (messageLog + combinedLogMessage)
-            this.message.setProperty("messageLog", combinedLogMessages)
+            this.message.setProperty(Constants.ILCD.LOG_STACK_PROPERTY, combinedLogMessages)
 
             // def itemMessageLog = itemData + customLogFields
             def headerData = prepareHeaderData(projectName, integrationID) ?: [:]
@@ -161,12 +147,12 @@ class Framework_Logger {
         updateLogCounter()
 
         def properties   = this.message.getProperties()
-        def projectName  = properties.get("projectName")
-        def integrationID = properties.get("integrationID")
+        def projectName  = properties.get(Constants.ILCD.VM_SRC_ID)
+        def integrationID = properties.get(Constants.ILCD.VM_TRGT_ID)
 
         def headerData = prepareHeaderData(projectName, integrationID, includeSystemInfo)
 
-        def messageLog = properties.get("messageLog")
+        def messageLog = properties.get(Constants.ILCD.LOG_STACK_PROPERTY)
         def messageLogEntries = []
 
         if (messageLog instanceof String) {
@@ -189,7 +175,7 @@ class Framework_Logger {
     def boolean isAttachable(String tracePoint) {
         def ATTACH_HARD_LIMIT = 10 // Hard limit for all attachments
         def ATTACH_SOFT_LIMIT = 5  // Softer limit for normal attachments (start/end logs)
-        def ATTACH_TRACE_LIMIT = 3  // Limit for trace attachments 
+        def ATTACH_TRACE_LIMIT = -1  // Limit for trace attachments (DISABLED!)
 
         if (this.settings.attachmentsDisabled?.toBoolean() || this.logCounter >= ATTACH_HARD_LIMIT) {
             return false
@@ -217,7 +203,7 @@ class Framework_Logger {
                     log.addAttachmentAsString(label, body, CONTENT_TYPE_JSON)
                 } else {
                     def simpleLog = fallbackSimpleLogMsg ? fallbackSimpleLogMsg : body
-                    log.setStringProperty(ATTACH_DISABLED_WARNING, ATTACH_DISABLED_WARNING_MSG)
+                    log.setStringProperty(Constants.ILCD.ATTACH_DISABLED, Constants.ILCD.ATTACH_DISABLED_MSG)
                     log.setStringProperty(label, 
                         simpleLog?.size() <= 30 ? simpleLog.substring(0, 27) + "..." : simpleLog)
                 }
@@ -261,43 +247,30 @@ class Framework_Logger {
         Map headers    = this.message.getHeaders()
         Map properties = this.message.getProperties()
 
-        metadata["SAP_MessageType"]     = headers.get("SAP_MessageType")
-        metadata["SAP_ApplicationID"]   = headers.get("SAP_ApplicationID")
+        def msgType = headers.get(Constants.Header.SAP_MESSAGE_TYPE)
+        def appId   = headers.get(Constants.Header.SAP_APP_ID)
+        metadata[Constants.Header.SAP_MESSAGE_TYPE] = msgType
+        metadata[Constants.Header.SAP_APP_ID]       = appId
 
-        def replicationGroupId = metadata["SAP_MessageType"]?.startsWith("rmid") ? metadata["SAP_MessageType"] :
-                                 metadata["SAP_ApplicationID"]?.startsWith("rmid") ? metadata["SAP_ApplicationID"] : null
+        def replicationGroupId = msgType?.startsWith("rmid") ? msgType : (appId?.startsWith("rmid") ? appId : null)
         if (replicationGroupId) {
-            metadata["ReplicationGroupMessageID"] = replicationGroupId
+            metadata[Constants.Property.AEM_RMID] = replicationGroupId
         }
-
-        if (!headers.get("SAP_Sender") || headers.get("SAP_Sender") != metadata.sourceSystemName) {
-            this.message.setHeader("SAP_Sender", metadata.sourceSystemName)
+        if (!headers.get(Constants.Header.SAP_SENDER) || headers.get(Constants.Header.SAP_SENDER) != metadata.sourceSystemName) {
+            this.message.setHeader(Constants.Header.SAP_SENDER, metadata.sourceSystemName)
         }
-        if (!headers.get("SAP_Receiver") || headers.get("SAP_Receiver") != metadata.targetSystemName) {
-            this.message.setHeader("SAP_Receiver", metadata.targetSystemName)
+        if (!headers.get(Constants.Header.SAP_RECEIVER) || headers.get(Constants.Header.SAP_RECEIVER) != metadata.targetSystemName) {
+            this.message.setHeader(Constants.Header.SAP_RECEIVER, metadata.targetSystemName)
         }
-
-        if (!properties.get("SAP_MessageProcessingLogCustomStatus") && this.logLevel == "ERROR") {
-            this.message.setProperty("SAP_MessageProcessingLogCustomStatus", CUSTOM_STATUS_FAILED)
+        if (!properties.get(Constants.Property.MPL_CUSTOM_STATUS) && this.logLevel == "ERROR") {
+            this.message.setProperty(Constants.Property.MPL_CUSTOM_STATUS, "Failed")
         }
-
         return metadata
-    }
-
-    /**
-     * This is to ensure that the required fields are set by developers. 
-     */
-    private void validateMetadataIdentifiers(String projectName, String integrationID) {
-        if (!projectName || !integrationID) {
-            throw new FrameworkMetadataException(
-                "Undefined framework identifier values - projectName: ${projectName} | integrationID: ${integrationID}."
-            )
-        }
     }
 
     def prepareHeaderData(String projectName, String integrationID, boolean includeSystemInfo = false) {
         try {
-            validateMetadataIdentifiers(projectName, integrationID)
+            Framework_ValueMaps.validateMetadataIdentifiers(projectName, integrationID)
 
             Map<String, Object> standardMetadata = buildStandardMetadata(projectName, integrationID)
             standardMetadata = updateMetadataAndStandardHeaders(standardMetadata)
@@ -334,34 +307,36 @@ class Framework_Logger {
         Map properties = message.getProperties()
         Map headers    = message.getHeaders()
 
-        def mpl_logLevel = properties.get("SAP_MPL_LogLevel_Internal")
-        def vm_logLevel  = getValueMapping(VM_INPUT, projectName, "meta_logLevel", VM_OUTPUT, integrationID)
+        def mpl_logLevel = properties.get(Constants.Property.MPL_LEVEL_INTERNAL)
         def tenantName   = this.systemInfo?.tenantName ?: System.getenv("TENANT_NAME") ?: this.settings.environment
-        def isRetryAttempt = properties.SAP_isComponentRedeliveryEnabled != null &&
-                             properties.SAP_isComponentRedeliveryEnabled.toBoolean() != false
+        def isRetryAttempt = properties.get(Constants.Property.SAP_IS_REDELIVERY_ENABLED) != null &&
+                             properties.get(Constants.Property.SAP_IS_REDELIVERY_ENABLED).toBoolean() != false
 
         return [
-            projectName                : safeGetValueMapping("meta_projectName", projectName, integrationID, projectName),
-            systemName                 : safeGetValueMapping("meta_systemName", projectName, integrationID, tenantName),
-            messageID                  : properties.get("SAP_MessageProcessingLogID"),
-            correlationID              : headers.get("SAP_MplCorrelationId"),
-            environment                : this.settings.environment ?: safeGetValueMapping("meta_environment", projectName, integrationID, tenantName),
-            timestamp                  : LocalDateTime.ofInstant(Instant.now(), ZoneOffset.UTC)
-                                             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")),
-            sourceSystemName           : safeGetValueMapping("meta_sourceSystemName", projectName, integrationID),
-            targetSystemName           : safeGetValueMapping("meta_targetSystemName", projectName, integrationID),
-            sourceSystemConnectionType : safeGetValueMapping("meta_sourceSystemConnectionType", projectName, integrationID),
-            targetSystemConnectionType : safeGetValueMapping("meta_targetSystemConnectionType", projectName, integrationID),
-            processArea                : safeGetValueMapping("meta_processArea", projectName, integrationID,    // Check for processArea key first and fallback to stream
-                                            safeGetValueMapping("meta_stream", projectName, integrationID)),    // `stream` gets mapped to `processArea`
-            integrationID              : safeGetValueMapping("meta_integrationID", projectName, integrationID, integrationID),
-            integrationName            : safeGetValueMapping("meta_integrationName", projectName, integrationID),
-            packageName                : safeGetValueMapping("meta_packageName", projectName, integrationID),
-            iFlowName                  : safeGetValueMapping("meta_iFlowName", projectName, integrationID),
-            logLevel                   : normalizeLogLevel(mpl_logLevel ?: vm_logLevel ?: this.settings.defaultOverallLogLevel),
-            priority                   : safeGetValueMapping("meta_priority", projectName, integrationID),
+            projectName                : interfaceVM("meta_projectName", projectName, integrationID, projectName),
+            systemName                 : interfaceVM("meta_systemName", projectName, integrationID, tenantName),
+            messageID                  : properties.get(Constants.Property.SAP_MPL_ID),
+            correlationID              : headers.get(Constants.Header.SAP_CORRELATION_ID),
+            environment                : this.settings.environment ?: interfaceVM("meta_environment", projectName, integrationID, tenantName),
+            timestamp                  : getTimestamp(),
+            sourceSystemName           : interfaceVM("meta_sourceSystemName", projectName, integrationID),
+            targetSystemName           : interfaceVM("meta_targetSystemName", projectName, integrationID),
+            sourceSystemConnectionType : interfaceVM("meta_sourceSystemConnectionType", projectName, integrationID),
+            targetSystemConnectionType : interfaceVM("meta_targetSystemConnectionType", projectName, integrationID),
+            processArea                : interfaceVM("meta_processArea", projectName, integrationID,    // Check for processArea key first and fallback to stream
+                                            interfaceVM("meta_stream", projectName, integrationID)),    // `stream` gets mapped to `processArea`
+            integrationID              : interfaceVM("meta_integrationID", projectName, integrationID, integrationID),
+            integrationName            : interfaceVM("meta_integrationName", projectName, integrationID),
+            packageName                : interfaceVM("meta_packageName", projectName, integrationID),
+            iFlowName                  : interfaceVM("meta_iFlowName", projectName, integrationID),
+            logLevel                   : normalizeLogLevel(mpl_logLevel ?: this.overallLogLevel ?: this.settings.defaultOverallLogLevel),
+            priority                   : interfaceVM("meta_priority", projectName, integrationID),
             Retry                      : isRetryAttempt
         ]
+    }
+
+    private String getTimestamp(String format = "yyyy-MM-dd HH:mm:ss.SSS") {
+        return LocalDateTime.ofInstant(Instant.now(), ZoneOffset.UTC).format(DateTimeFormatter.ofPattern(format))
     }
 
     /**
@@ -447,27 +422,7 @@ class Framework_Logger {
     }
 
     def mask(String jsonString, String projectName, String integrationID) {
-        def jsonObject   = new JsonSlurper().parseText(jsonString)
-        def mappedValue  = getValueMapping(VM_INPUT, projectName, "loggerSensitiveFields", VM_OUTPUT, integrationID) ?: ""
-        def sensitiveFields = mappedValue.split(',').collect { it.trim().toLowerCase() }
-        jsonObject = maskSensitiveFields(jsonObject, sensitiveFields)
-        return JsonOutput.prettyPrint(JsonOutput.toJson(jsonObject))
-    }
-
-    private def maskSensitiveFields(def json, List<String> sensitiveFields) {
-        if (json instanceof Map) {
-            json.each { key, value ->
-                if (sensitiveFields.contains(key.toLowerCase())) {
-                    int maskLength = (value instanceof String) ? Math.min(16, value.length()) : 8
-                    json[key] = '*' * maskLength
-                } else {
-                    json[key] = maskSensitiveFields(value, sensitiveFields)
-                }
-            }
-        } else if (json instanceof List) {
-            json = json.collect { maskSensitiveFields(it, sensitiveFields) }
-        }
-        return json
+        return Framework_Utils.maskFields(jsonString, projectName, integrationID, "loggerSensitiveFields", message, messageLog)
     }
 
     def parseCustomAttributes(def properties) {
@@ -483,30 +438,12 @@ class Framework_Logger {
         return attrs
     }
 
-    private String safeGetValueMapping(String key, String projectName, String integrationID, String defaultValue = null) {
-        try {
-            return getValueMapping(VM_INPUT, projectName, key, VM_OUTPUT, integrationID) ?: defaultValue
-        } catch (Exception e) {
-            handleScriptError(message, messageLog, e, "Framework_Logger.safeGetValueMapping", false)
-            return defaultValue
-        }
+    private String interfaceVM(String key, String projectName, String integrationID, String defaultValue = null) {
+        Framework_ValueMaps.interfaceVM(key, projectName, integrationID, defaultValue, message, messageLog)
     }
 
-    def getValueMapping(String srcAgency, String srcId, String srcKey, String targetAgency, String targetId) {
-        try {
-            def api = ITApiFactory.getApi(ValueMappingApi.class, null)
-            return api?.getMappedValue(srcAgency, srcId, srcKey, targetAgency, targetId) ?: ""
-        } catch (Exception e) {
-            def fields = """\n\n
-                Source Agency:      ${srcAgency}\n
-                Source Identifier:  ${srcId}\n
-                Source Value:       ${srcKey}\n
-                Target Agency:      ${targetAgency}\n
-                Target Identifier:  ${targetId}\n
-            """
-            handleScriptError(message, messageLog, e, "Framework_Logger.getValueMapping", true, fields)
-            throw e
-        }
+    private String frameworkVM(String key, String defaultValue = null) {
+        Framework_ValueMaps.interfaceVM(key, defaultValue, message, messageLog)
     }
 
     def static String getStackTrace(Exception e) {
@@ -528,9 +465,8 @@ class Framework_Logger {
 
     private def void updateLogCounter() {
         try {
-            def current = this.message.getProperty(LOG_COUNTER_PROPERTY)?.toInteger() ?: 0
-            this.logCounter = current + 1
-            this.message.setProperty(LOG_COUNTER_PROPERTY, "${this.logCounter}")
+            this.logCounter = (this.message.getProperty(Constants.ILCD.LOG_COUNT)?.toInteger() ?: 0) + 1
+            this.message.setProperty(Constants.ILCD.LOG_COUNT, "${this.logCounter}")
         } catch (Exception e) {
             handleScriptError(message, messageLog, e, "Framework_Logger.updateLogCounter")
         }
@@ -548,41 +484,20 @@ class Framework_Logger {
         return this.messageLog
     }
 
-    /**
-     * Now actually returns property info (not headers).
-     */
-    private def List getFullPropertyList() {
-        try {
-            return message.getProperties()
-                .findAll { String key, Object value -> !(value instanceof InputStream) }
-                .collect { String key, Object value ->
-                    ([(key): "${value}"] + (value instanceof String ? [] : [type: value?.getClass()?.getName()]))
-                }
-        } catch (Exception e) {
-            handleScriptError(message, messageLog, e, "Framework_Logger.getFullPropertyList", true)
-        }
-    }
-
-    private def List getFullHeaderList() {
-        try {
-            return message.getHeaders().collect { String key, Object entry ->
-                def value = (entry instanceof InputStream) ? message.getHeader(key, Reader)?.getText() : entry
-                return ([(key): "${value}"] + (value instanceof String ? [] : [type: value.getClass().getName()]))
-            }
-        } catch (Exception e) {
-            handleScriptError(message, messageLog, e, "Framework_Logger.getFullHeaderList", true)
-        }
-    }
-
     private void handleValidationError(Exception e, String function, boolean critical = false) {
         handleScriptError(this.message, this.messageLog, e, function, true)
         if (critical) throw e
     }
 
-    static void handleScriptError(Message message, MessageLog messageLog, Exception e, String function,
-                                  boolean printStackTrace = false, String customData = "") {
-        def logger = LoggerFactory.getLogger("Framework_Logger")
-        def errorLabel = "${ILCD_ERROR_PREFIX}-${function}_${ILCD_ERROR_SUFFIX}"
+    static void handleScriptError(
+        Message message, 
+        MessageLog messageLog, 
+        Exception e, 
+        String function, 
+        boolean printStackTrace = false, 
+        String customData = ""
+    ) {
+        def errorLabel = "${Constants.ILCD.EXC_PREFIX}-${function}_${Constants.ILCD.EXC_SUFFIX}"
         def errorMessage = "Function: ${function}\nMessage: ${e.message}\n"
 
         if (customData) {
@@ -599,9 +514,11 @@ class Framework_Logger {
 
         if (messageLog) {
             messageLog.addAttachmentAsString(errorLabel, errorMessage, "text/plain")
-            messageLog.addCustomHeaderProperty("${ILCD_ERROR_PREFIX}", "true")
-            messageLog.addCustomHeaderProperty("${ILCD_ERROR_PREFIX}-ScriptName", function)
-            messageLog.addCustomHeaderProperty("${ILCD_ERROR_PREFIX}-ErrorClass", e.getClass()?.getName())
+            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}", "true")
+            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ScriptName", function)
+            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.getClass()?.getName())
+            messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ScriptName", function)
+            messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.getClass()?.getName())
         }
         // logger.error("${errorLabel} occurred: ${e.message}", e) // If needed
     }
@@ -619,15 +536,6 @@ class Framework_Logger {
             ]
         } catch (Exception e) {
             handleScriptError(message, messageLog, e, "Framework_Logger.getSystemDetails", false)
-        }
-    }
-
-    static class FrameworkMetadataException extends RuntimeException {
-        FrameworkMetadataException(String message) {
-            super(message)
-        }
-        Throwable getCause() {
-            return new Throwable("FrameworkMetadataException: Invalid metadata configuration for projectName/integrationID.")
         }
     }
 }

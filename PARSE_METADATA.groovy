@@ -4,6 +4,7 @@ import com.sap.it.api.msglog.MessageLog
 import groovy.json.JsonSlurper
 import src.main.resources.script.Framework_Notifications
 import src.main.resources.script.Framework_Logger
+import src.main.resources.script.Framework_Utils
 import src.main.resources.script.Constants
 
 def Message processData(Message message) {
@@ -70,13 +71,40 @@ def log(String key, String value, MessageLog messageLog) {
     }
 }
 
+
+def Message maskEmailFields(Message message) {
+    def messageLog = messageLogFactory.getMessageLog(message)
+    try {
+        def utils = new Framework_Utils(message, messageLog)
+        def props = message.getProperties()
+        def maskedLogs = utils.maskFields(
+            message.getBody(String), props.get("projectName"), props.get("integrationID"), "emailSensitiveFields")
+        message.setBody(maskedLogs)
+    } catch (Exception e) {
+        Framework_Logger.handleScriptError(message, messageLog, e, "PARSE_METADATA.maskEmailFields", true)
+    }
+    return message
+}
+
 def Message formatEmailBody(Message message) {
     def messageLog = messageLogFactory.getMessageLog(message)
     try {
         def handler = new Framework_Notifications(message, messageLog)
         handler.formatHtmlBody()
     } catch (Exception e) {
-        Framework_Logger.handleScriptError(message, messageLog, e, "FORMAT_EMAIL_BODY", true)
+        Framework_Logger.handleScriptError(message, messageLog, e, "PARSE_METADATA.formatEmailBody", true)
     }
     return message
 }
+
+
+// def Message filterLogs(Message message) {
+//     def messageLog = messageLogFactory.getMessageLog(message)
+//     try {
+//         def handler = new Framework_Notifications(message, messageLog)
+//         handler.filterLogs()
+//     } catch (Exception e) {
+//         Framework_Logger.handleScriptError(message, messageLog, e, "PARSE_METADATA.filterLogs", true)
+//     }
+//     return message
+// }
