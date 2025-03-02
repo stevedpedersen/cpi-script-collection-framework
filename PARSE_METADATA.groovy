@@ -7,8 +7,12 @@ import src.main.resources.script.Framework_Logger
 import src.main.resources.script.Framework_Utils
 import src.main.resources.script.Constants
 
+/*
+ * Used at beginning of framework iFlows to validate the logs payload and add the 
+ * interface's custom headers to correlate the logs together. Sets a Header named
+ * HasError if there is an error log entry.
+ */
 def Message processData(Message message) {
-
     def json
     try {
         def body = message.getBody(String)
@@ -18,6 +22,9 @@ def Message processData(Message message) {
         message.setProperty("hasInvalidPayload", "true")
         return message
     }
+
+    if (json?.projectName) message.setProperty("projectName", json.projectName)
+    if (json?.integrationID) message.setProperty("integrationID", json.integrationID)
 
     def hasError = false
     def messageLog = messageLogFactory.getMessageLog(message)
@@ -71,14 +78,27 @@ def log(String key, String value, MessageLog messageLog) {
     }
 }
 
+// Filters out the log.messages to include the emailFilterValues only (error logs only by default)
+def Message filterLogs(Message message) {
+    def messageLog = messageLogFactory.getMessageLog(message)
+    try {
+        def handler = new Framework_Utils(message, messageLog)
+        def updatedBody = handler.filterLogs()
+        message.setBody(updatedBody)
+    } catch (Exception e) {
+        Framework_Logger.handleScriptError(message, messageLog, e, "PARSE_METADATA.filterLogs", true)
+    }
+    return message
+}
 
+// Masks the values specified in emailSensitiveFields
 def Message maskEmailFields(Message message) {
     def messageLog = messageLogFactory.getMessageLog(message)
     try {
-        def utils = new Framework_Utils(message, messageLog)
+        // def utils = new Framework_Utils(message, messageLog)
         def props = message.getProperties()
-        def maskedLogs = utils.maskFields(
-            message.getBody(String), props.get("projectName"), props.get("integrationID"), "emailSensitiveFields")
+        def maskedLogs = Framework_Utils.maskFields(
+            message.getBody(String), props.get("projectName"), props.get("integrationID"), "emailSensitiveFields", message, messageLog)
         message.setBody(maskedLogs)
     } catch (Exception e) {
         Framework_Logger.handleScriptError(message, messageLog, e, "PARSE_METADATA.maskEmailFields", true)
@@ -86,6 +106,22 @@ def Message maskEmailFields(Message message) {
     return message
 }
 
+// Masks the values specified in loggerSensitiveFields
+def Message maskLoggerFields(Message message) {
+    def messageLog = messageLogFactory.getMessageLog(message)
+    try {
+        // def utils = new Framework_Utils(message, messageLog)
+        def props = message.getProperties()
+        def maskedLogs = Framework_Utils.maskFields(
+            message.getBody(String), props.get("projectName"), props.get("integrationID"), "loggerSensitiveFields", message, messageLog)
+        message.setBody(maskedLogs)
+    } catch (Exception e) {
+        Framework_Logger.handleScriptError(message, messageLog, e, "PARSE_METADATA.maskLoggerFields", true)
+    }
+    return message
+}
+
+// Used in the Notifications handler to conver the JSON logs to an HTML table for email
 def Message formatEmailBody(Message message) {
     def messageLog = messageLogFactory.getMessageLog(message)
     try {
@@ -97,14 +133,3 @@ def Message formatEmailBody(Message message) {
     return message
 }
 
-
-// def Message filterLogs(Message message) {
-//     def messageLog = messageLogFactory.getMessageLog(message)
-//     try {
-//         def handler = new Framework_Notifications(message, messageLog)
-//         handler.filterLogs()
-//     } catch (Exception e) {
-//         Framework_Logger.handleScriptError(message, messageLog, e, "PARSE_METADATA.filterLogs", true)
-//     }
-//     return message
-// }

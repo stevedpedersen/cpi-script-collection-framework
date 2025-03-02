@@ -66,9 +66,7 @@ class Framework_ExceptionHandler {
 	        	messageLog.addCustomHeaderProperty("error_message", error.message ?: error.exceptionMessage)
 	            messageLog.addCustomHeaderProperty("error_exceptionClass", error.className)
 	            messageLog.addCustomHeaderProperty("error_statusCode", error.statusCode.toString())
-	            if (!error.message || error.message != error.exceptionMessage) {
-	            	messageLog.addCustomHeaderProperty("error_exceptionMessage", error.exceptionMessage)
-	            }
+				messageLog.addCustomHeaderProperty("error_exceptionMessage", error.exceptionMessage)
 	        }
 
 	        // If we want to log, do it now
@@ -86,8 +84,7 @@ class Framework_ExceptionHandler {
     }
 
     private void setErrorProperties() {
-        def hasAdapterRedelivery = this.message.getProperty(Constants.Property.SAP_IS_REDELIVERY_ENABLED)
-        this.error.hasRetry = hasAdapterRedelivery != null && hasAdapterRedelivery.toBoolean() != false
+        this.error.hasRetry = toBool(this.message.getProperty(Constants.Property.SAP_IS_REDELIVERY_ENABLED))
         this.error.headers = this.message.getHeaders()
 
         def ex = this.message.getProperty(Constants.Property.CAMEL_EXC_CAUGHT)
@@ -234,5 +231,11 @@ class Framework_ExceptionHandler {
             // LoggerFactory.getLogger("Framework_ExceptionHandler").error("Error generating stack trace: ${innerEx.message}", innerEx)
             return "Error generating stack trace: ${innerEx.message}"
         }
+    }
+
+    boolean toBool(Object rawValue) {
+        if (rawValue == null) return false 
+        if (rawValue instanceof Boolean) return (Boolean) rawValue
+        return Boolean.parseBoolean(rawValue.toString())
     }
 }
