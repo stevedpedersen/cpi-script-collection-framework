@@ -1,0 +1,14 @@
+Manifest-Version: 1.0
+Bundle-SymbolicName: ILCDFunctionLibraries
+Bundle-ManifestVersion: 2
+Origin-Bundle-SymbolicName: ILCDFunctionLibraries
+Import-Package: org.osgi.framework,com.sap.it.api.mapping,com.sap.aii.mapping.value.api,com.sap.aii.mapping.lookup,com.sap.aii.mappingtool.tfapi,com.sap.aii.mappingtool.tf7.rt,com.sap.aii.mappingtool.tf7,com.sap.aii.mappingtool.tf3.rt,com.sap.aii.mappingtool.tf3,com.sap.aii.mappingtool.flib7,com.sap.aii.mappingtool.flib3,com.sap.aii.mapping.api,com.sap.aii.ib.bom.flib.types,com.sap.xi.mapping.camel,com.sap.aii.mappingtool.functionlibrary
+Origin-Bundle-Name: ILCDFunctionLibraries
+Provide-Capability: functionlibraries.ILCDFunctionLibraries;version:Version="1.0.0"
+Bundle-Name: ILCDFunctionLibraries
+Bundle-Version: 1.0.0
+Bundle-Activator: com.sap.xi.mapping.camel.FunctionLibraryBundleActivator
+SAP-NodeType: IFLMAP
+SAP-BundleType: FunctionLibraries
+Import-Service: 
+

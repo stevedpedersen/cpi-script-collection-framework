@@ -168,18 +168,21 @@ class Framework_Utils {
 	    return JsonOutput.toJson(response)
 	}
 
-	public String maskFields(String body, String projectName, String integrationID, String vmField = "loggerSensitiveFields")  {
+	public static String maskFields(
+		String body, String projectName, String integrationID, String vmField, Message message, MessageLog messageLog) {
+    	def utilsInstance = new Framework_Utils(message, messageLog)
+		return utilsInstance.maskFieldsImpl(body, projectName, integrationID, vmField)
+	}
+
+	private String maskFieldsImpl(String body, String projectName, String integrationID, String vmField)  {
         def jsonObject   = new JsonSlurper().parseText(body)
         def mappedValue  = Framework_ValueMaps.interfaceVM(vmField, projectName, integrationID, "", message, messageLog)
+		if (mappedValue == null) {
+			return JsonOutput.prettyPrint(JsonOutput.toJson(jsonObject))
+		}
         def sensitiveFields = mappedValue.split(',').collect { it.trim().toLowerCase() }
 		jsonObject = maskSensitiveFields(jsonObject, sensitiveFields)
 		return JsonOutput.prettyPrint(JsonOutput.toJson(jsonObject))
-	}
-
-	public static String maskFields(
-		String body, String projectName, String integrationID, String vmField = "loggerSensitiveFields", Message message, MessageLog messageLog) {
-    	def utilsInstance = new Framework_Utils(message, messageLog)
-		return utilsInstance.maskFields(body, projectName, integrationID, vmField)
 	}
 
     def maskSensitiveFields(def json, List<String> sensitiveFields) {
@@ -197,4 +200,23 @@ class Framework_Utils {
         }
         return json
     }
+
+	def String filterLogs() {
+		def props = this.message.getProperties()
+		def body = this.message.getBody(String)
+		def jsonObject = new JsonSlurper().parseText(body)
+		
+        // def logger = new Framework_Logger(message, messageLog)
+        def emailFilterValues = Framework_ValueMaps.interfaceVM(
+			"emailFilterValues", props.get("projectName"), props.get("integrationID"), "E", this.message, this.messageLog)
+        def filterValues = emailFilterValues.toUpperCase().split(",").collect {
+            Framework_Logger.normalizeLogLevel(it.trim(), this.logger)
+        }
+        def filteredItems = (jsonObject.messages instanceof List ? jsonObject.messages : [jsonObject.messages]).findAll { 
+            def itemLevel = Framework_Logger.normalizeLogLevel(it.logLevel, this.logger)
+            filterValues.contains(itemLevel)
+        }
+        jsonObject.messages = filteredItems
+		return JsonOutput.prettyPrint(JsonOutput.toJson(jsonObject))
+	}
 }	

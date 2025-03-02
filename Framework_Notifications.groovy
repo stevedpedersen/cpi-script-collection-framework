@@ -7,6 +7,7 @@ import java.net.URLEncoder
 
 import src.main.resources.script.Framework_ValueMaps
 import src.main.resources.script.Framework_Logger
+import src.main.resources.script.Framework_Utils
 import src.main.resources.script.Constants
 
 class Framework_Notifications {
@@ -59,12 +60,14 @@ class Framework_Notifications {
         }
         
         // Filter specified emailFilterValues logs only
+        // def utils = new Framework_Utils(message, messageLog)
+        // jsonObject = utils.filterLogs()
         def logger = new Framework_Logger(message, messageLog)
-        def emailFilterValues = interfaceVM("emailFilterValues", projectName, integrationID, "ERROR")
+        def emailFilterValues = interfaceVM("emailFilterValues", projectName, integrationID, "E")
         def filterValues = emailFilterValues.toUpperCase().split(",").collect {
             Framework_Logger.normalizeLogLevel(it.trim(), logger)
         }
-        def filteredItems = jsonObject.messages.findAll { 
+        def filteredItems = (jsonObject.messages instanceof List ? jsonObject.messages : [jsonObject.messages]).findAll { 
             def itemLevel = Framework_Logger.normalizeLogLevel(it.logLevel, logger)
             filterValues.contains(itemLevel)
         }
@@ -83,12 +86,12 @@ class Framework_Notifications {
      * Takes a List of Map and produces one-dimensional HTML description lists. 
      */
     def createMessagesHtml(List<Map> messages) {
-        def error = "style='color:${Constants.Style.JNJ_RED_HEX}!important'"
+        def error = "style='color:${Constants.Style.JNJ_RED_HEX} !important;'"
         def sb = new StringBuilder()
         messages.each { msgMap ->
             sb.append("<dl style='font-size:0.8rem'>")
             msgMap.each { k, v ->
-                def style = k.equalsIgnoreCase("loglevel") ? error : ""
+                def style = k.equalsIgnoreCase("logLevel") ? error : ""
                 sb.append("<dt><b ${style}>${k}</b></dt>")
                 sb.append("<dd ${style}>${v}</dd>")
             }

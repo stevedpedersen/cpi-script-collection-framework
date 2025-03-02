@@ -3,8 +3,6 @@ package src.main.resources.script
 import com.sap.gateway.ip.core.customdev.util.Message
 import com.sap.it.api.msglog.MessageLog
 import groovy.json.JsonBuilder
-import groovy.json.JsonOutput
-import groovy.json.JsonSlurper
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -16,7 +14,9 @@ import src.main.resources.script.Framework_ValueMaps
 import src.main.resources.script.Framework_Utils
 import src.main.resources.script.Constants
 
-class Framework_Logger {
+/**
+ *
+ */class Framework_Logger {
     Map entries = [
         headers   : [],
         properties: [],
@@ -33,20 +33,18 @@ class Framework_Logger {
     Map settings = [
         attachmentsDisabled         : false,
         attachmentLimit             : "5",
+        traceAttachmentLimit        : "3",
         charLimit                   : "1000",
         defaultLogLevel             : "INFO",
         defaultOverallLogLevel      : "TRACE",
         environment                 : "Production",
-        customHeaderCharLimit       : "50",
+        customHeaderCharLimit       : "180",
         customHeaderExtraKeys       : "10",
-        customHeaderBatchSummaryLimit  : "2000",
     ]
     Map systemInfo = [:]
 
     // Value-mapping agencies / placeholders
-    static final String CONTENT_TYPE_JSON = "application/json"
     static final String CUSTOM_STATUS_FAILED   = "Failed"
-    static final int CUSTOM_HEADER_CHAR_LIMIT  = 200
     private Map<String, String> metadataCache = [:]
 
     Framework_Logger(Message message, MessageLog messageLog) {
@@ -64,8 +62,9 @@ class Framework_Logger {
         if (metadataCache.isEmpty()) {
             metadataCache["attachmentsDisabled"]    = frameworkVM("setting_attachmentsDisabled", "false")
             metadataCache["attachmentLimit"]        = frameworkVM("setting_attachmentLimit", "5")
+            metadataCache["traceAttachmentLimit"]   = frameworkVM("setting_traceAttachmentLimit", "3")
             metadataCache["charLimit"]              = frameworkVM("setting_logCharLimit", "1000")
-            metadataCache["customHeaderCharLimit"]  = frameworkVM("setting_customHeaderCharLimit", "50")
+            metadataCache["customHeaderCharLimit"]  = frameworkVM("setting_customHeaderCharLimit", "150")
             metadataCache["customHeaderExtraKeys"]  = frameworkVM("setting_customHeaderExtraKeys", "10")
             metadataCache["defaultLogLevel"]        = frameworkVM("setting_defaultLogLevel", "INFO")
             metadataCache["defaultOverallLogLevel"] = frameworkVM("setting_defaultOverallLogLevel", "TRACE")
@@ -73,6 +72,7 @@ class Framework_Logger {
         }
         this.settings.attachmentsDisabled = metadataCache["attachmentsDisabled"]
         this.settings.attachmentLimit = metadataCache["attachmentLimit"]
+        this.settings.traceAttachmentLimit = metadataCache["traceAttachmentLimit"]
         this.settings.charLimit = metadataCache["charLimit"]
         this.settings.defaultLogLevel = metadataCache["defaultLogLevel"]
         this.settings.defaultOverallLogLevel = metadataCache["defaultOverallLogLevel"]
@@ -89,7 +89,6 @@ class Framework_Logger {
         def label = "#${this.logCounter} ${tracePoint}_LOG"
 
         def properties = this.message.getProperties()
-        def headers    = this.message.getHeaders()
         def projectName = properties.get(Constants.ILCD.VM_SRC_ID)
         def integrationID = properties.get(Constants.ILCD.VM_TRGT_ID)
         def messageLog = properties.get(Constants.ILCD.LOG_STACK_PROPERTY)
@@ -104,9 +103,9 @@ class Framework_Logger {
                 itemData += [text: logData]
             }
 
-            def errorLocation = properties.get("errorLocation")
-            def errorStepID = message.getProperty(Constants.Property.SAP_ERR_STEP_ID)
             if (this.logLevel == "ERROR") {
+                def errorLocation = properties.get("errorLocation")
+                def errorStepID = message.getProperty(Constants.Property.SAP_ERR_STEP_ID)
                 if (!errorLocation) {
                     def ex = this.message.getProperty(Constants.Property.CAMEL_EXC_CAUGHT)
                     if (ex != null) {
@@ -174,23 +173,25 @@ class Framework_Logger {
 
     def boolean isAttachable(String tracePoint) {
         def ATTACH_HARD_LIMIT = 10 // Hard limit for all attachments
-        def ATTACH_SOFT_LIMIT = 5  // Softer limit for normal attachments (start/end logs)
-        def ATTACH_TRACE_LIMIT = -1  // Limit for trace attachments (DISABLED!)
+        def ATTACH_SOFT_LIMIT = settings?.attachmentLimit?.isInteger() ? settings.attachmentLimit.toInteger() : 5
+        def ATTACH_TRACE_LIMIT = settings?.traceAttachmentLimit?.isInteger() ? settings.traceAttachmentLimit.toInteger() : 3
 
-        if (this.settings.attachmentsDisabled?.toBoolean() || this.logCounter >= ATTACH_HARD_LIMIT) {
+        if (toBool(settings.attachmentsDisabled) || this.logCounter >= ATTACH_HARD_LIMIT) {
             return false
         }
         if (tracePoint == "ERROR" ) {
             return true
         }
         if (tracePoint == "END") {
-            return this.logCounter <= (ATTACH_SOFT_LIMIT + 1)
+            return this.logCounter <= (ATTACH_SOFT_LIMIT + 1) // +1 allows for remaining end log
         }
-        if (["START", "LOG_BATCH_SUMMARY", "INFO_CUSTOM", "WARN_CUSTOM"].contains(tracePoint)) {
+        // everything but trace/debug or conclude logs if overall count < soft limit
+        if (!["TRACE", "FULL_LOG", "TRACE_CUSTOM", "DEBUG_CUSTOM"].contains(tracePoint)) { 
             return this.logCounter <= ATTACH_SOFT_LIMIT
         }
-        if (tracePoint == "TRACE") {
-            return (this.overallLogLevel == "TRACE" && this.logCounter <= ATTACH_TRACE_LIMIT)
+        // everything but conclude logs if overall count < trace limit
+        if (["TRACE", "TRACE_CUSTOM", "DEBUG_CUSTOM"].contains(tracePoint)) {
+            return (["TRACE", "DEBUG"].contains(this.overallLogLevel) && this.logCounter <= ATTACH_TRACE_LIMIT)
         }
         return false
     }
@@ -199,8 +200,8 @@ class Framework_Logger {
         try {
             def log = getOrCreateMessageLog()
             if (log != null) {
-                if (!this.settings.attachmentsDisabled?.toBoolean()) {
-                    log.addAttachmentAsString(label, body, CONTENT_TYPE_JSON)
+                if (!toBool(settings.attachmentsDisabled)) {
+                    log.addAttachmentAsString(label, body, Constants.Header.CONTENT_TYPE_JSON)
                 } else {
                     def simpleLog = fallbackSimpleLogMsg ? fallbackSimpleLogMsg : body
                     log.setStringProperty(Constants.ILCD.ATTACH_DISABLED, Constants.ILCD.ATTACH_DISABLED_MSG)
@@ -283,14 +284,11 @@ class Framework_Logger {
             def customMetadata = buildCustomMetadata(properties)
 
             try {
-                MessageLog log = getOrCreateMessageLog()
-                addStandardMetadataProperties(log, standardMetadata)
-                addCustomMetadataPrimaryKey(log, customMetadata)
-
-                def customKeysProp = properties.get("customHeaderPropertyKeys") as String
-                addUserDefinedCustomHeaders(log, customMetadata, customKeysProp)
+                addStandardMetadataProperties(standardMetadata)
+                addCustomMetadataPrimaryKey(customMetadata)
+                addUserDefinedCustomHeaders(customMetadata)
             } catch (Exception e) {
-                handleScriptError(message, messageLog, e, "Framework_Logger.addHeaderProperties", false)
+                handleScriptError(message, messageLog, e, "Framework_Logger.prepareHeaderData", true)
             }
 
             def combinedHeader = standardMetadata + customMetadata
@@ -300,7 +298,7 @@ class Framework_Logger {
 
             return removeEmptyFields(combinedHeader)
         } catch (Exception e) {
-            handleScriptError(message, messageLog, e, "Framework_Logger.prepareHeaderData")
+            handleScriptError(message, messageLog, e, "Framework_Logger.prepareHeaderData", true)
         }
     }
 
@@ -313,8 +311,7 @@ class Framework_Logger {
 
         def mpl_logLevel = properties.get(Constants.Property.MPL_LEVEL_INTERNAL)
         def tenantName   = this.systemInfo?.tenantName ?: System.getenv("TENANT_NAME") ?: this.settings.environment
-        def isRetryAttempt = properties.get(Constants.Property.SAP_IS_REDELIVERY_ENABLED) != null &&
-                             properties.get(Constants.Property.SAP_IS_REDELIVERY_ENABLED).toBoolean() != false
+        def isRetryAttempt = toBool(properties.get(Constants.Property.SAP_IS_REDELIVERY_ENABLED))
 
         return [
             projectName                : interfaceVM("meta_projectName", projectName, integrationID, projectName),
@@ -344,62 +341,58 @@ class Framework_Logger {
     }
 
     /**
-     * Adds standard metadata fields to custom header properties, each truncated to the configured char limit.
+     * Adds standard metadata fields to custom header properties
      */
     private void addStandardMetadataProperties(MessageLog log, Map<String, Object> standardMetadata) {
-        if (!log || !standardMetadata) return
-
-        Constants.ILCD.META_FIELDS_TO_CUSTOM_HEADERS.each { f ->
-            def val = standardMetadata[f]
-            if (val) {
-                def safeVal = prepareString(val.toString(), this.settings.customHeaderCharLimit)
-                log.addCustomHeaderProperty("meta_${f}", safeVal)
-            }
+        if (!standardMetadata) return
+        Constants.ILCD.META_FIELDS_TO_CUSTOM_HEADERS.each { fieldName ->
+            writeMetaCustomHeaderProperty(fieldName, standardMetadata[fieldName])
         }
     }
 
     /**
-     * If the user set 'meta_attribute_businessId', add it as 'meta_businessId' to the header.
+     * Adds custom header 'meta_businessId' using likely values for it, starting with property
+     * 'meta_attribute_businessId'.
      */
-    private void addCustomMetadataPrimaryKey(MessageLog log, Map customMetadata) {
-        if (!log || !customMetadata) return
-
-        def pkVal = customMetadata.businessId ?: customMetadata.businessID
-        if (pkVal) {
-            def safeVal = prepareString(pkVal.toString(), this.settings.customHeaderCharLimit)
-            log.addCustomHeaderProperty("meta_businessId", safeVal)
-        }
+    private void addCustomMetadataPrimaryKey(Map customMetadata) {
+        if (!customMetadata) return
+        def altKey = message.headers[Constants.Header.SAP_MESSAGE_TYPE] 
+            ?: message.properties[Constants.ILCD.Batch.JOB_ID]
+            ?: message.properties["businessId"] ?: message.properties["businessID"]
+        def pkVal = customMetadata.businessId ?: customMetadata.businessID ?: altKey
+        writeMetaCustomHeaderProperty("businessId", pkVal)
     }
 
     /**
-     * Adds meta_attributes as custom header properties, prioritizing any keys specified by exchange 
-     * property 'customHeaderPropertyKeys' (comma-sep), up to a configured number (default 5) and 
-     * values up to a configured character limit (default 50) for each value.
+     * Adds meta_attributes plus any additional specified properties as custom header properties. 
+     * Property names specified on property 'customHeaderPropertyKeys' (comma-sep), are used to do
+     * a lookup at runtime. 
      */
-    private void addUserDefinedCustomHeaders(MessageLog log, Map customMetadata, String customKeysProp) {
-        if (!log || !customMetadata || !customKeysProp) return
-
-        // Parse user keys, only keep valid ones from customMetadata
-        def userKeys = customKeysProp
-            .split(",")
-            .collect { it.trim() }
-            .findAll { it && customMetadata.containsKey(it) }
-
-        // Subtract user keys from the set of all metadata keys
-        def leftoverKeys = customMetadata.keySet() - userKeys
-
-        // Concatenate user keys + leftover, up to configured limit
-        def maxKeys = (this.settings.customHeaderExtraKeys ?: "5").toInteger()
-        def finalKeys = (userKeys + leftoverKeys).take(maxKeys)
-
-        // Add each to custom header properties
-        finalKeys.each { k ->
-            def val = customMetadata[k]
-            if (val) {
-                def safeVal = prepareString(val.toString(), this.settings.customHeaderCharLimit)
-                log.addCustomHeaderProperty("meta_${k}", safeVal)
+    private void addUserDefinedCustomHeaders(Map customMetadata) {
+        if (!customMetadata) return
+        def customKeysProp = properties["customHeaderPropertyKeys"] as String
+        def userKeys = (customKeysProp ?: "").split(",").findAll { message.properties[it] != null } 
+        def userProps = (userKeys ?: []).collectEntries { [(it): message.properties[it]] }
+        def finalProps = userProps + customMetadata
+        
+        finalProps.remove("businessId")                         // already added businessId, exclude it 
+        finalProps.keySet()                                     // use keys for uniqueness check
+            .toUnique()                                         // and don't repeat standard metadata
+            .minus(Constants.ILCD.META_FIELDS_TO_CUSTOM_HEADERS)
+            .take(settings.customHeaderExtraKeys)               
+            .each { key -> 
+                writeMetaCustomHeaderProperty(key, finalProps[key]) 
             }
-        }
+    }
+    /**
+     * SAP limits custom header props to 200 chars, but we check for any lower limit set in global VM.
+     */
+    private void writeMetaCustomHeaderProperty(String key, String value) {
+        MessageLog log = getOrCreateMessageLog()
+        if (!log || !key || !value) return
+        def metaKey = "${Constants.ILCD.META_CH_PREFIX}${key}"
+        def metaValue = prepareString(value.toString(), settings.customHeaderCharLimit) 
+        log.addCustomHeaderProperty(metaKey, metaValue)
     }
 
     def removeEmptyFields(def object) {
@@ -493,41 +486,13 @@ class Framework_Logger {
         if (critical) throw e
     }
 
-    static void handleScriptError(
-        Message message, 
-        MessageLog messageLog, 
-        Exception e, 
-        String function, 
-        boolean printStackTrace = false, 
-        String customData = ""
-    ) {
-        def errorLabel = "${Constants.ILCD.EXC_PREFIX}-${function}_${Constants.ILCD.EXC_SUFFIX}"
-        def errorMessage = "Function: ${function}\nMessage: ${e.message}\n"
-
-        if (customData) {
-            errorMessage += "${customData}\n"
-        }
-        if (printStackTrace) {
-            errorMessage += "Stack Trace:\n" + Framework_ExceptionHandler.getStackTrace(e)
-        }
-
-        def charLimit = message.getProperty("charLimit")?.toInteger() ?: 2000
-        if (errorMessage.length() > charLimit) {
-            errorMessage = errorMessage.substring(0, charLimit) + "... (truncated)"
-        }
-
-        if (messageLog) {
-            messageLog.addAttachmentAsString(errorLabel, errorMessage, "text/plain")
-            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}", "true")
-            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ScriptName", function)
-            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.getClass()?.getName())
-            messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ScriptName", function)
-            messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.getClass()?.getName())
-        }
-        // logger.error("${errorLabel} occurred: ${e.message}", e) // If needed
+    private boolean toBool(Object rawValue) {
+        if (rawValue == null) return false 
+        if (rawValue instanceof Boolean) return (Boolean) rawValue
+        return Boolean.parseBoolean(rawValue.toString())
     }
 
-    private def Map getSystemDetails() {
+    private Map getSystemDetails() {
         try {
             return [
                 javaVersion: System.properties['java.version'],
@@ -541,5 +506,80 @@ class Framework_Logger {
         } catch (Exception e) {
             handleScriptError(message, messageLog, e, "Framework_Logger.getSystemDetails", false)
         }
+    }
+    /**
+     * The default fallback handler in case of exceptions thrown within ILCD Framework code. 
+     * Can be queried in the Message Processing Logs via custom headers: "ILCD_EXC=true"
+     * 
+     * The intent is to log the internal exception while allowing for execution 
+     * to continue. This does have a downside in that we get a limited stacktrace.
+     */
+    static void handleScriptError(
+        Message message, 
+        MessageLog messageLog, 
+        Exception e, 
+        String function, 
+        boolean printStackTrace = false, 
+        String customData = ""
+    ) {
+        def log4j = LoggerFactory.getLogger("Framework_Logger")
+        if (!messageLog) {
+            log4j.warn("handleScriptError called with a null MPL reference. Unable to log the exception.")
+            return
+        }
+        if (message.getProperty("ILCD_EXC_inProgress") == true) {
+            log4j.error("handleScriptError called recursively. Skipping second attempt to avoid infinite loop.", e)
+            return
+        }
+        message.setProperty("ILCD_EXC_inProgress", true)
+
+        def errorLabel = "${Constants.ILCD.EXC_PREFIX}-${function}"
+        def errorMessage = new StringBuilder()
+        def errorMap = [
+            "Script/Function": function,
+            "Exception Message": e.message,
+            "Cause": e.cause ?: "Unknown",
+            "Details": customData ?: "N/A",
+            "Stack Trace": !printStackTrace ? "N/A" : ("\n\t" + Framework_ExceptionHandler.getStackTrace(e))
+        ]
+
+        // Include Exception Info, Properties, Headers
+        appendProperties(errorMessage, "EXCEPTION SUMMARY", errorMap)
+        appendProperties(errorMessage, "PROPERTIES", message.properties)
+        appendProperties(errorMessage, "HEADERS", message.headers)
+
+        try {
+            messageLog.addAttachmentAsString(errorLabel, errorMessage.toString(), "text/plain")
+            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}", "true")
+            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ScriptName", function)
+            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.getClass()?.getName())
+            messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ScriptName", function)
+            messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.getClass()?.getName())
+        } catch (Exception innerEx) {
+            log4j.error("handleScriptError: Could not attach error; skipping to avoid recursion.", innerEx)
+        }
+        log4j.error("${errorLabel} occurred: ${e.message}", e)
+    }
+
+    static String truncate(String input, int maxLength) {
+        return ((input?.size() ?: 0) > maxLength) ? input.substring(0, maxLength) + "... (truncated)" : input
+    }
+
+    static void appendProperties(StringBuilder sb, String title, Map map) {
+        sb.append(formatTitle(title))
+        map.each { key, value ->
+            try {
+                String truncatedValue = truncate(value?.toString(), (key != "Stack Trace" ? 100 : 3000))
+                sb.append(String.format("\t%-40s: %-100s\n", key, truncatedValue))
+            } catch (Exception ignored) {
+                sb.append("Exc for ${key} - ${ignored.message}\n")
+            }
+        }
+        sb.append("\n")
+    }
+
+    static String formatTitle(String input) {
+        String border = "—" * input.length()
+        return "${border}\n${input}\n${border}\n" // Titles are underlined with a border
     }
 }

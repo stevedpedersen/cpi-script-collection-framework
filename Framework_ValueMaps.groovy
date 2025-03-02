@@ -31,10 +31,10 @@ class Framework_ValueMaps {
 
     public static String frameworkVM(String key, String defaultValue = null, Message message, MessageLog messageLog) {
         try {
-            def valueMapsInstance = new Framework_ValueMaps(message, messageLog) 
+            def valueMapsInstance = new Framework_ValueMaps(message, messageLog) // ✅ Create an instance
             return valueMapsInstance.getValueMapping(key, Constants.ILCD.VM_GLOBAL_SRC_ID, Constants.ILCD.VM_GLOBAL_TRGT_ID) ?: defaultValue
         } catch (Exception e) {
-            Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.frameworkVM", false)
+            // Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.frameworkVM", false)
             return defaultValue
         }
     }
@@ -44,7 +44,7 @@ class Framework_ValueMaps {
             def valueMapsInstance = new Framework_ValueMaps(message, messageLog)  // ✅ Create an instance
             return valueMapsInstance.getValueMapping(key, projectName, integrationID) ?: defaultValue
         } catch (Exception e) {
-            Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.interfaceVM", false)
+            // Framework_Logger.handleScriptError(message, messageLog, e, "Framework_ValueMaps.interfaceVM", false)
             return defaultValue
         }
     }
