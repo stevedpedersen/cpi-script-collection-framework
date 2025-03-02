@@ -540,7 +540,7 @@ import src.main.resources.script.Constants
             "Exception Message": e.message,
             "Cause": e.cause ?: "Unknown",
             "Details": customData ?: "N/A",
-            "Stack Trace": !printStackTrace ? "N/A" : ("\n\t" + Framework_ExceptionHandler.getStackTrace(e))
+            "Stack Trace": !printStackTrace ? "N/A" : ("\n" + Framework_ExceptionHandler.getStackTrace(e))
         ]
 
         // Include Exception Info, Properties, Headers
@@ -570,7 +570,7 @@ import src.main.resources.script.Constants
         map.each { key, value ->
             try {
                 String truncatedValue = truncate(value?.toString(), (key != "Stack Trace" ? 100 : 3000))
-                sb.append(String.format("\t%-40s: %-100s\n", key, truncatedValue))
+                sb.append(String.format(" %-40s: %-100s\n", key, truncatedValue))
             } catch (Exception ignored) {
                 sb.append("Exc for ${key} - ${ignored.message}\n")
             }
