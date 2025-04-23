@@ -1,0 +1,55 @@
+plugins {
+    id 'groovy'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation fileTree(dir: 'src/main/resources/lib', include: ['*.jar'])
+    implementation files('src/main/resources/script')
+    implementation 'org.codehaus.groovy:groovy-all:3.0.21' 
+    // implementation 'org.apache.camel:camel-core:3.14.7'
+
+    testImplementation 'org.codehaus.groovy:groovy-all:3.0.21' 
+    // testImplementation 'org.apache.camel:camel-core:3.14.7'
+    testImplementation files('src/main/resources/script')
+    testImplementation 'org.spockframework:spock-core:2.3-groovy-3.0'
+}
+
+sourceSets {
+    main {
+        groovy {
+            srcDirs = ['src/main/resources/script', 'src/main/groovy', 'src/main/groovy/com/sap/gateway/ip/core/customdev/util', 'src/main/groovy/com/sap/it/api']
+            // srcDirs = ['src/main/resources/script','src/main/resources/lib', 'src/main/resources/script/stubs', 'src/main/groovy/com/sap/gateway/ip/core/customdev/util', 'src/main/groovy/com/sap/it/api']
+        }
+    }
+    test {
+        groovy {
+            srcDirs = [
+                'src/main/groovy',
+                'src/test/groovy/cases/ilcd', 
+                'src/test/groovy/cases/example',
+                'src/main/resources/data'
+            ]
+        }
+        // groovy {
+        //     srcDirs = [
+        //         'src/test/groovy',
+        //         'src/main/test',
+        //         'src/main/resources/script/stubs',
+        //         'src/main/groovy/com/sap/gateway/ip/core/customdev/util',
+        //         'src/main/groovy/com/sap/it/api'
+        //     ]
+        // }
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+task testReport(dependsOn: ['clean', 'test']) {
+    group = 'verification'
+    description = 'Cleans, runs tests, and generates reports.'
+}

@@ -1,0 +1,26 @@
+# VM_Dev_FrameworkMetadata:
+#   ValueMapSchema1:
+#     IsConfigured: "false"
+#     SrcId: "SP_Dev_Package"
+#     SrcAgency: "Input"
+#     TgtId: "IF_ILCD_Develop"
+#     TgtAgency: "Output"
+#     Version: "active"
+#     valueMaps:
+#       new:
+#         meta_newEntry: "testing-123"
+IF_Customer_Send_TIME_ELIMS
+  ValueMapSchema1:
+    IsConfigured: "false"
+    SrcId: "SP_Dev_Package"
+    SrcAgency: "Input"
+    TgtId: "IF_ILCD_Develop"
+    TgtAgency: "Output"
+    Version: "active"
+    valueMaps:
+      new:
+        meta_newEntry: "testing-123"
+
+
+
+

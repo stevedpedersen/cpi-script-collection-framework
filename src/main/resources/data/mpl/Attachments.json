@@ -1,0 +1,123 @@
+{
+    "basicLogAttachments": [
+        {
+            "name": "#1 VALIDATION_SUCCESS_LOG",
+            "type": "application/json",
+            "content": {
+                "projectName": "TranscendIM",
+                "systemName": "jnj-im-dev-na",
+                "messageID": "AGgHiZWN5ESnzBZ0k51zReCZ-mkK",
+                "correlationID": "AGgHiZW9u1iVjazia4AD9ZwwfZuq",
+                "environment": "DEV",
+                "timestamp": "2025-04-22 12:20:37.754",
+                "sourceSystemName": "OpenText",
+                "targetSystemName": "TIME",
+                "sourceSystemConnectionType": "AS2",
+                "targetSystemConnectionType": "SOAP",
+                "processArea": "Deliver",
+                "integrationID": "IF_ReturnsOrder_Post_OPENTEXT_TIME",
+                "integrationName": "ReturnsOrder from OpenText to Send",
+                "packageName": "IM_Deliver_TIME_OPENTEXT",
+                "iFlowName": "IF_ReturnsOrder_Post_OPENTEXT_TIME",
+                "logLevel": "TRACE",
+                "priority": "High",
+                "Retry": false,
+                "SAP_ApplicationID": "40000093",
+                "IdocType": "ORDERS05",
+                "MsgType": "ZOM_RETURN",
+                "messages": [
+                    {
+                        "logLevel": "TRACE",
+                        "text": "Successful mandatory field validation"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "#2 START_LOG",
+            "type": "application/json",
+            "content": {
+                "projectName": "TranscendIM",
+                "systemName": "jnj-im-dev-na",
+                "messageID": "AGgHiZWN5ESnzBZ0k51zReCZ-mkK",
+                "correlationID": "AGgHiZW9u1iVjazia4AD9ZwwfZuq",
+                "environment": "DEV",
+                "timestamp": "2025-04-22 12:20:38.272",
+                "sourceSystemName": "OpenText",
+                "targetSystemName": "TIME",
+                "sourceSystemConnectionType": "AS2",
+                "targetSystemConnectionType": "SOAP",
+                "processArea": "Deliver",
+                "integrationID": "IF_ReturnsOrder_Post_OPENTEXT_TIME",
+                "integrationName": "ReturnsOrder from OpenText to Send",
+                "packageName": "IM_Deliver_TIME_OPENTEXT",
+                "iFlowName": "IF_ReturnsOrder_Post_OPENTEXT_TIME",
+                "logLevel": "TRACE",
+                "priority": "High",
+                "Retry": false,
+                "SAP_ApplicationID": "40000093",
+                "IdocType": "ORDERS05",
+                "MsgType": "ZOM_RETURN",
+                "messages": [
+                    {
+                        "logLevel": "TRACE",
+                        "text": "Successful mandatory field validation"
+                    },
+                    {
+                        "logLevel": "INFO",
+                        "text": "START of iFlow transaction"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "#3 END_LOG",
+            "type": "application/json",
+            "content": {
+                "projectName": "TranscendIM",
+                "systemName": "jnj-im-dev-na",
+                "messageID": "AGgHiZWN5ESnzBZ0k51zReCZ-mkK",
+                "correlationID": "AGgHiZW9u1iVjazia4AD9ZwwfZuq",
+                "environment": "DEV",
+                "timestamp": "2025-04-22 12:20:39.464",
+                "sourceSystemName": "OpenText",
+                "targetSystemName": "TIME",
+                "sourceSystemConnectionType": "AS2",
+                "targetSystemConnectionType": "SOAP",
+                "processArea": "Deliver",
+                "integrationID": "IF_ReturnsOrder_Post_OPENTEXT_TIME",
+                "integrationName": "ReturnsOrder from OpenText to Send",
+                "packageName": "IM_Deliver_TIME_OPENTEXT",
+                "iFlowName": "IF_ReturnsOrder_Post_OPENTEXT_TIME",
+                "logLevel": "TRACE",
+                "priority": "High",
+                "Retry": false,
+                "SAP_ApplicationID": "40000093",
+                "IdocType": "ORDERS05",
+                "MsgType": "ZOM_RETURN",
+                "messages": [
+                    {
+                        "logLevel": "TRACE",
+                        "text": "Successful mandatory field validation"
+                    },
+                    {
+                        "logLevel": "INFO",
+                        "text": "START of iFlow transaction"
+                    },
+                    {
+                        "logLevel": "TRACE",
+                        "text": "Message Mapping Successful"
+                    },
+                    {
+                        "logLevel": "TRACE",
+                        "text": "Return Orders sent to TIME"
+                    },
+                    {
+                        "logLevel": "INFO",
+                        "text": "IFlow ended successfully"
+                    }
+                ]
+            }
+        }
+    ]
+}
