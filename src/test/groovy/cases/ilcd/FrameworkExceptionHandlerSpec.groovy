@@ -6,6 +6,7 @@ import com.sap.gateway.ip.core.customdev.util.Message
 import src.main.resources.script.Framework_ExceptionHandler
 import src.main.resources.script.Constants
 import com.sap.it.api.msglog.MessageLog
+import cases.ilcd.TestHelper
 
 class FrameworkExceptionHandlerSpec extends Specification {
     def "should parse error from XML with <property id='error'>"() {
@@ -178,41 +179,30 @@ class FrameworkExceptionHandlerSpec extends Specification {
 
     def "should set hasRetry true if SAP_IS_REDELIVERY_ENABLED is true"() {
         given:
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
-        message.setBody('<root/>')
+        // def message = new com.sap.gateway.ip.core.customdev.util.Message()
+        def message = TestHelper.makeRetrySAPMessage()
         message.headers = [:]
-        // Set only the correct property key to string 'true' as expected by production code
-        message.properties = [
-            (Constants.Property.SAP_IS_REDELIVERY_ENABLED.toString()): 'true',
-            integrationID: 'IF_My_IFlow',
-            projectName: 'IP_My_Package'
-        ]
+        def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
+
+        when:
+        handler.setErrorProperties()
+
+        then:     
+        handler.error.hasRetry == true
+    }
+
+    def "should set hasRetry false if SAP_IS_REDELIVERY_ENABLED is missing or false"() {
+        given:
+        def message = TestHelper.makeErrorSAPMessage()
+        message.headers = [:]
         def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
 
         when:
         handler.setErrorProperties()
 
         then:
-        println "DEBUG: Property key used: ${Constants.Property.SAP_IS_REDELIVERY_ENABLED.toString()}"
-        println "DEBUG: Properties map: ${message.properties}"
-        println "DEBUG: hasRetry value: ${handler.error.hasRetry}"        
-        handler.error.hasRetry == true
+        handler.error.hasRetry == false
     }
-
-    // def "should set hasRetry false if SAP_IS_REDELIVERY_ENABLED is missing or false"() {
-    //     given:
-    //     def message = new com.sap.gateway.ip.core.customdev.util.Message()
-    //     message.setBody('<root/>')
-    //     message.headers = [:]
-    //     message.properties = [:]
-    //     def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
-
-    //     when:
-    //     handler.setErrorProperties()
-
-    //     then:
-    //     handler.error.hasRetry == false
-    // }
 
     def "should handle null body gracefully"() {
         given:

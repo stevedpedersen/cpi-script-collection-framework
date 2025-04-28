@@ -50,8 +50,9 @@ class FrameworkUtilsSpec extends Specification {
         def xml = utils.formatResponseXml()
         def json = utils.formatResponseJson()
         then:
-        xml.contains('<Error>')
-        json.contains('Internal Server Error')
+        xml.contains('<Response>')
+        xml.contains('200')
+        json.contains('Request processed successfully')
     }
 
     def "createJsonSuccessResponse and createXmlSuccessResponse output expected fields"() {

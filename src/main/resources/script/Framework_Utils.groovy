@@ -108,13 +108,13 @@ class Framework_Utils {
 		if (!message) {
 			return format.equalsIgnoreCase("json") 
 				? '{"Code":"500","Message":"Internal Server Error","Details":{}}' 
-				: '<Error><Code>500</Code><Message>Internal Server Error</Message><ErrorDetails/></Error>'
+				: '<Response><Code>500</Code><Message>Internal Server Error</Message><Details/></Response>'
 		}
 		def msgId = message.getProperty(Constants.Property.SAP_MPL_ID) ?: 'N/A'
 		def corId = message.getHeader(Constants.Header.SAP_CORRELATION_ID, String.class) ?: 'N/A'
 		def status = message.getProperty(Constants.Property.MPL_CUSTOM_STATUS) ?: 'Failed'
 		def json = '{"Code":"500","Message":"Internal Server Error","Details":{"MessageID":"${msgId}","CorrelationID":"${corId}","CustomStatus":"${status}"}}'
-		def xml = "<Error><Code>500</Code><Message>Internal Server Error</Message><ErrorDetails><MessageID>${msgId}</MessageID><CorrelationID>${corId}</CorrelationID><CustomStatus>${status}</CustomStatus></ErrorDetails></Error>"
+		def xml = "<Response><Code>500</Code><Message>Internal Server Error</Message><Details><MessageID>${msgId}</MessageID><CorrelationID>${corId}</CorrelationID><CustomStatus>${status}</CustomStatus></Details></Response>"
 		return format.equalsIgnoreCase("json") ? json : xml
 	}
 

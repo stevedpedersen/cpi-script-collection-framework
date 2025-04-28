@@ -9,7 +9,9 @@ class TestHelper {
     static String sampleBody = '{"projectName":"proj","integrationID":"int","messages":[{"logLevel":"ERROR","text":"fail"}]}'
     static Map sampleHeaders = [SAP_MplCorrelationId: 'Abc123deF456GHi789_jKl0']
     static Map sampleProperties = [integrationID: "I-0123-MasterData", projectName: "Transcend", SAP_MessageProcessingLogID: 'Abc123deF456GHi789_jKl0'] 
-
+    static Map sampleErrorProperties = sampleProperties +[CamelExceptionCaught: new Exception("fail!")]
+    static Map sampleRetryProperties = sampleProperties + [SAP_isComponentRedeliveryEnabled: true]
+    static Map sampleErrorDetails = [text: "fail", statusCode: 500, errorLocation: "errorLocation", errorStepID: "errorStepID", timestamp: "2023-01-01T00:00:00Z"]
     static def makeSAPMessage(Map opts = [:]) {
         def msg = new com.sap.gateway.ip.core.customdev.util.Message()
         def ctx = new org.apache.camel.impl.DefaultCamelContext()
@@ -25,6 +27,16 @@ class TestHelper {
         println "DEBUG: (makeSAPMessage) body after setBody: ${msg.getBody(String)}"
         (opts.headers ?: sampleHeaders).each { k, v -> msg.setHeader(k, v) }
         (opts.properties ?: sampleProperties).each { k, v -> msg.setProperty(k, v) }
+        return msg
+    }
+    static def makeErrorSAPMessage(Map opts = [:]) {
+        def msg = makeSAPMessage(opts)
+        (opts.properties ?: sampleErrorProperties).each { k, v -> msg.setProperty(k, v) }
+        return msg
+    }
+    static def makeRetrySAPMessage(Map opts = [:]) {
+        def msg = makeSAPMessage(opts)
+        (opts.properties ?: sampleRetryProperties).each { k, v -> msg.setProperty(k, v) }
         return msg
     }
     static def makeMessage(Map opts = [:]) {
