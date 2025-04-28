@@ -45,11 +45,14 @@ class Framework_ExceptionHandler {
             if (!error.message || error.message != error.exceptionMessage) {
                 message.setProperty("log_exceptionMessage", error.exceptionMessage)
             }
-            
             // Add custom headers if we have a messageLog
             if (messageLog) {
                 if (error.message != null) { 
-                    error.message.split("\n").each { messageLog.addCustomHeaderProperty(Constants.ILCD.ExceptionHandler.MPL_CH_ERR_MSG, "${it}") }
+                    if (error.message.contains(Constants.ILCD.Validator.MM_ERROR_PREFIX)) {
+                        error.message.split("\n").eachWithIndex { msg, i -> messageLog.addCustomHeaderProperty(Constants.ILCD.ExceptionHandler.MPL_CH_ERR_MSG, msg.replace("[0]", "[${i}]")) }
+                    } else {
+                        messageLog.addCustomHeaderProperty(Constants.ILCD.ExceptionHandler.MPL_CH_ERR_MSG, "${error.message}")
+                    }
                 }
                 if (error.className != null) { messageLog.addCustomHeaderProperty(Constants.ILCD.ExceptionHandler.MPL_CH_ERR_EXC_CLASS, "${error.className}") }
                 if (error.statusCode != null) { messageLog.addCustomHeaderProperty(Constants.ILCD.ExceptionHandler.MPL_CH_ERR_STATUS_CODE, "${error.statusCode.toString()}")}
@@ -58,7 +61,6 @@ class Framework_ExceptionHandler {
                     messageLog.addCustomHeaderProperty(Constants.ILCD.ExceptionHandler.MPL_CH_ERR_EXC_MSG, "${error.exceptionMessage}")
                 }
             }
-
             // If we want to log, do it now
             if (shouldLog) {
                 def logger = new Framework_Logger(message, messageLog)
@@ -74,58 +76,51 @@ class Framework_ExceptionHandler {
     }
 
     private void setErrorProperties() {
-        def hasAdapterRedelivery = this.message.getProperty(Constants.Property.SAP_IS_REDELIVERY_ENABLED)
-        this.error.hasRetry = hasAdapterRedelivery != null && hasAdapterRedelivery.toBoolean() != false
+        this.error.hasRetry = toBool(this.message.getProperty(Constants.Property.SAP_IS_REDELIVERY_ENABLED))
         this.error.headers = this.message.getHeaders()
         this.error.type = Constants.ILCD.ExceptionHandler.normalizeErrorType(
             this.message.getProperty(Constants.ILCD.ExceptionHandler.ERR_TYPE_PROPERTY))
 
         def ex = this.message.getProperty(Constants.Property.CAMEL_EXC_CAUGHT)
-        if (ex != null) {
-            this.error.className = ex.getClass().getCanonicalName()
-            this.error.message = ex.getMessage() ?: this.error.message
-            this.error.exceptionMessage = ex.getMessage()
+        def customEx = ex ? findCauseByClass(ex, [Constants.ILCD.Validator.EXC_CLASS, Constants.SoftError.EXC_CLASS]) : null
 
-            // Set the error fields for a 400 Bad Request when throwing validation errors
-            if (this.error.message?.contains(Constants.ILCD.Validator.EXC_CLASS)) {
-				this.message.setHeader(Constants.Header.CAMEL_RESPONSE_CODE, "400")
-                this.error.statusCode = 400
-                this.error.className = "Framework_Validator.${Constants.ILCD.Validator.EXC_CLASS}"
-                this.error.type = Constants.ILCD.ExceptionHandler.ERR_TYPE_FUNC
+        this.error.exceptionMessage = ex ? (ex.getMessage() ?: "Internal Server Error") : "Internal Server Error"
+        this.error.className = ex ? (ex.getClass()?.getCanonicalName() ?: "RuntimeException") : "RuntimeException"
+        this.error.message = this.error.exceptionMessage ?: (ex ? ex.getCause() : null)
 
-                def lines = this.error.message.split("\\r?\\n")
-                if (lines && lines.size() > 0 && lines[0].startsWith("java.lang.Exception:")) {
-                    def errBody = lines[0].replaceFirst(/^java\\.lang\\.Exception: [^:]+: /, "")
-                    def newLines = errBody.split("\\n") as List
-                    if (lines.size() > 1) newLines.addAll(lines[1..-1])
-                    lines = newLines
+        // Override base info for custom exception types
+        if (customEx != null) {
+            this.message.setHeader(Constants.Header.CAMEL_RESPONSE_CODE, "400")
+            this.error.statusCode = 400
+            this.error.className = customEx.getClass().getCanonicalName()
+            this.error.type = Constants.ILCD.ExceptionHandler.ERR_TYPE_FUNC
+            this.error.message = customEx.getMessage()
+            this.messageLog.setStringProperty("exceptionCanonicalName", "${this.error.className}")
+            try { // Clean up error message
+                def lines = this.error.message.replaceAll(/@.*/, '').trim().split("\\r?\\n")
+                if (lines && lines.size() > 0 && lines[0].contains('$')) {
+                    lines[0] = lines[0].replaceFirst(/^java\.lang\.Exception: [^:]+: /, "")
                 }
-                def filtered = lines.findAll { it.trim().startsWith("[") }
-                if (filtered && filtered.size() > 0) {
-                    this.error.message = filtered.collect { it.replaceAll(/@.*/, '').trim() }.join("\n")
+                if (this.error.message.contains(Constants.ILCD.Validator.MM_ERROR_PREFIX)) {
+                    lines = lines?.toList()?.withIndex()?.collect { msg, i -> msg.replace("[0]", "[${i}]") }
                 }
+                this.error.message = lines.join("\n")
+            } catch(Exception ignored) {}
+        }
+
+        // Use adapter-specific handlers to parse remaining error details
+        Constants.ILCD.ExceptionHandler.ADAPTER_EXC_CLASSES.each { adapter, exceptions ->
+            if (exceptions.containsKey(this.error.className)) {
+                def methodName = exceptions.get(this.error.className)
+                this."$methodName"(ex)
             }
-
-    		// Use adapter handlers to parse error details
-			Constants.ILCD.ExceptionHandler.ADAPTER_EXC_CLASSES.each { adapter, exceptions ->
-				if (exceptions.containsKey(this.error.className)) {
-					def methodName = exceptions.get(this.error.className)
-					this."$methodName"(ex)
-				}
-			}
         }
 
-        // Custom error parsing for XML body (if not already set by adapters)
-        def body = this.message.getBody(String)
-        if (body && body.trim().startsWith("<") && (!this.error.message || this.error.message == "Internal Server Error")) {
-            parseAndSetXmlError(body)
-        }
-
-        // Also read the CamelHttpResponseCode
+        // Also resolve the status code, giving preference to anything < 500
         def existingCode = this.error.headers.get(Constants.Header.CAMEL_RESPONSE_CODE) 
             ?: this.message.getHeaders().get(Constants.Header.CAMEL_RESPONSE_CODE)
             ?: this.message.getProperty(Constants.Header.CAMEL_RESPONSE_CODE)
-        if (existingCode) {
+        if (existingCode && (!this.error.statusCode || this.error.statusCode == 500)) {
             this.error.statusCode = existingCode.toString().isInteger() ? existingCode.toInteger() : 500
         }
 
@@ -160,45 +155,6 @@ class Framework_ExceptionHandler {
         this.error.details = ex.getLocalizedMessage() ?: ex.getHttpStatus() ?: ex.getErrorCode()
     }
 
-    /**
-     * Parses XML response (as String) for error/status and sets error fields if found.
-     * Used for custom error detection in CPI SOAP/REST responses.
-     */
-    void parseAndSetXmlError(String body) {
-        if (!body || body.trim().isEmpty()) return
-        try {
-            def parser = new XmlSlurper(false, false)
-            parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
-            def parsed = parser.parseText(body)
-
-            // Get escaped XML content inside <processActionReturn>
-            def encodedXml = parsed.'**'.find { it.name() == 'processActionReturn' }?.text()
-            if (encodedXml && encodedXml.trim()) {
-                // Unescape and parse the CDATA XML string (decode HTML entities like &lt;)
-                def decodedXml = encodedXml.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&')
-                parsed = parser.parseText(decodedXml)
-            }
-
-            // Check for <property id="error">
-            def errorNode = parsed.'**'.find { it.name() == 'property' && it.@id == 'error' }
-            if (errorNode && errorNode.text().trim()) {
-                this.error.message = errorNode.text().trim()
-                this.error.statusCode = 500
-                this.error.type = "XML_PARSE"
-                return
-            }
-            // Check <property id="status"> == FAILED
-            def statusNode = parsed.'**'.find { it.name() == 'property' && it.@id == 'status' }
-            if (statusNode && statusNode.text().toUpperCase() == "FAILED") {
-                this.error.message = "Response status is FAILED."
-                this.error.statusCode = 500
-                this.error.type = "XML_PARSE"
-            }
-        } catch (Exception e) {
-            // Fallback: don't throw, just log
-        }
-    }
-
     def String parseMessageFromBody(String body) {
         def altKey = this.message.getProperty(Constants.ILCD.ExceptionHandler.ERR_KEY_PROP) ?: ""
         def messages = []
@@ -225,7 +181,8 @@ class Framework_ExceptionHandler {
             } catch (Exception e) {}
         } else if (body.startsWith('<')) {
             try {
-                def xml = new XmlSlurper().parseText(body)
+                def safeBody = escapeAmpersands(body)
+                def xml = new XmlSlurper().parseText(safeBody)
                 xml.depthFirst().findAll { node -> 
                     node.name().equalsIgnoreCase(Constants.ILCD.ExceptionHandler.ERR_MSG_KEY) || node.name().equalsIgnoreCase(altKey)
                 }.each { node -> 
@@ -237,9 +194,42 @@ class Framework_ExceptionHandler {
                         messages.add(node.value.text())
                     }
                 }
-            } catch (Exception e) {}
+            } catch (Exception e) {
+
+            }
         }
         return messages.join(", ")
+    }
+
+    /**
+     * Recursively walks the cause chain of an exception to find the first cause whose class matches any of the provided canonical or simple class names.
+     * @param ex The root exception to start from
+     * @param targetClassNames List of class names (canonical or simple) to match
+     * @return The first matching cause exception, or null if none found
+     */
+    static Throwable findCauseByClass(Throwable ex, List<String> targetClassNames) {
+        Throwable current = ex
+        while (current != null) {
+            String canonicalName = current.class?.canonicalName
+            String simpleName = current.class?.simpleName
+            if (targetClassNames.any { it == canonicalName || it == simpleName }) {
+                return current
+            }
+            current = current.cause
+        }
+        return null
+    }
+
+    // Utility: Find a cause in the exception chain matching any class name in the list
+    static Throwable findCause(Throwable ex, List<String> classNames) {
+        while (ex != null) {
+            def exClass = ex.getClass().getCanonicalName()
+            if (classNames.any { exClass.contains(it) }) {
+                return ex
+            }
+            ex = ex.getCause()
+        }
+        return null
     }
 
     /**
@@ -297,5 +287,127 @@ class Framework_ExceptionHandler {
         if (rawValue == null) return false 
         if (rawValue instanceof Boolean) return (Boolean) rawValue
         return Boolean.parseBoolean(rawValue.toString())
+    }
+
+    public static Exception getInternalExceptionType(Message message) {
+        return findCauseByClass(message.getProperty(Constants.Property.CAMEL_EXC_CAUGHT), [
+            Constants.ILCD.Validator.EXC_CLASS,
+            Constants.SoftError.EXC_CLASS,
+            Constants.ILCD.ValueMaps.EXC_CLASS
+        ])
+    }
+
+    def escapeAmpersands(String xml) {
+        xml.replaceAll(/&(?!amp;|lt;|gt;|apos;|quot;|#\d+;|#x[a-fA-F0-9]+;)/, '&amp;')
+    }
+
+    /**
+     * Checks for soft error conditions in the message body (empty, empty XML root, XML error/status nodes, etc).
+     * Optionally, can check for embedded XML inside a specified wrapper node (e.g. <processActionReturn>), if provided.
+     * Accepts a list of predicates for soft error detection (each predicate gets the parsed XML root node).
+     * Returns a map: [softError: true/false, reason: code, message: details]
+     * @param message         The CPI Message object
+     * @param wrapperNodeName (Optional) The node name to check for embedded XML (default: null)
+     * @param predicates      (Optional) List of [reason: String, predicate: Closure] maps. Each predicate returns [matched: true/false, message: String] or false/null if not matched.
+     */
+    public static Map checkForSoftError(
+        Message message,
+        String wrapperNodeName = null,
+        List<Map> predicates = null
+    ) {
+        if (message.getProperty(Constants.SoftError.PROP_IS_SOFT_ERROR) == true) {
+            // Already handled, skip further checks
+            return [softError: false, isPropagated: true]
+        }
+        def ex = getInternalExceptionType(message)
+        if (ex != null) {
+            message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, true)
+            message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, Constants.SoftError.EMPTY_BODY)
+            message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, "Body is empty")
+            return [softError: true, reason: ex?.reason, message: ex.message, isPropagated: false]
+        }
+        def body = message.getBody(String)
+        if (!body || body.trim().isEmpty()) {
+            message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, true)
+            message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, Constants.SoftError.EMPTY_BODY)
+            message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, "Body is empty")
+            return [softError: true, reason: Constants.SoftError.EMPTY_BODY, message: "Body is empty", isPropagated: true]
+        }
+        if (body.startsWith('<')) {
+            try {
+                def parser = new XmlSlurper(false, false)
+                parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
+                def safeBody = escapeAmpersands(body)
+                def parsed = parser.parseText(safeBody)
+                if (wrapperNodeName) {
+                    def encodedXml = parsed.'**'.find { it.name() == wrapperNodeName }?.text()
+                    if (encodedXml && encodedXml.trim()) {
+                        def decodedXml = encodedXml.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&')
+                        parsed = parser.parseText(decodedXml)
+                    }
+                }
+                predicates = predicates ?: getDefaultXmlPredicates()
+                for (p in predicates) {
+                    def result = p.predicate(parsed)
+                    if (result?.matched) {
+                        // Set soft error properties for iFlow use
+                        message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, true)
+                        message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, p.reason)
+                        message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, result.message)
+                        return [softError: true, reason: p.reason, message: result.message, isPropagated: false]
+                    }
+                }
+            } catch (Exception e) {
+                message.setProperty("isPayloadInvalid", "true")
+                message.setProperty("payloadParseError", e.message)
+                // Continue, so the flow can handle the technical error elsewhere
+            }
+        }
+        // Clear soft error properties if no soft error found
+        message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, false)
+        message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, null)
+        message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, null)
+        return [softError: false, isPropagated: false]
+    }
+
+    public static void throwCustomException(String reason, String msg = "") {
+        throw new SoftErrorException(reason, msg)
+    }
+
+    public static class SoftErrorException extends RuntimeException {
+        String reason
+        int statusCode
+        SoftErrorException(String reason, String message, int statusCode = 400) {
+            super(message)
+            this.reason = reason
+            this.statusCode = statusCode
+        }
+        String getReason() { return reason }
+        int getStatusCode() { return statusCode }
+    }
+
+    static List getDefaultXmlPredicates() {
+        return [
+            [reason: Constants.SoftError.EMPTY_XML_ROOT, predicate: { node ->
+                if (node.children().isEmpty() && node.text().trim().isEmpty()) {
+                    return [matched: true, message: "XML root node is empty"]
+                }
+                return [matched: false]
+            }],
+            [reason: Constants.SoftError.XML_ERROR_NODE, predicate: { node ->
+                def errorNode = node.'**'.find { it.name() == 'property' && it.@id == 'error' }
+                if (errorNode && errorNode.text().trim()) {
+                    return [matched: true, message: errorNode.text().trim()]
+                }
+                return [matched: false]
+            }],
+            [reason: Constants.SoftError.XML_STATUS_FAILED, predicate: { node ->
+                def statusNode = node.'**'.find { it.name() == 'property' && it.@id == 'status' }
+                if (statusNode && statusNode.text().toUpperCase() == "FAILED") {
+                    return [matched: true, message: "Response status is FAILED"]
+                }
+                return [matched: false]
+            }]
+        ]
     }
 }

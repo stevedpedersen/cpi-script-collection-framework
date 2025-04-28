@@ -1,0 +1,96 @@
+FROM jenkins/jenkins:alpine
+
+ENV JENKINS_USER admin
+ENV JENKINS_PASS admin
+
+# Skip initial setup
+ENV JAVA_OPTS -Djenkins.install.runSetupWizard=false
+
+USER root
+RUN apk add docker
+RUN apk add py-pip
+
+RUN jenkins-plugin-cli \
+    --plugins \
+    bouncycastle-api \
+    instance-identity \
+    javax-activation-api \
+    javax-mail-api \
+    structs \
+    workflow-step-api \
+    scm-api \
+    workflow-api \
+    pipeline-milestone-step \
+    caffeine-api \
+    script-security \
+    workflow-support \
+    pipeline-build-step \
+    workflow-scm-step \
+    ionicons-api \
+    cloudbees-folder \
+    variant \
+    workflow-cps \
+    pipeline-groovy-lib \
+    credentials \
+    plain-credentials \
+    trilead-api \
+    ssh-credentials \
+    credentials-binding \
+    pipeline-stage-step \
+    jaxb \
+    snakeyaml-api \
+    jackson2-api \
+    pipeline-model-api \
+    workflow-job \
+    pipeline-model-extensions \
+    jakarta-activation-api \
+    jakarta-mail-api \
+    display-url-api \
+    mailer \
+    branch-api \
+    workflow-multibranch \
+    durable-task \
+    workflow-durable-task-step \
+    pipeline-stage-tags-metadata \
+    mina-sshd-api-common \
+    mina-sshd-api-core \
+    apache-httpcomponents-client-4-api \
+    git-client \
+    pipeline-input-step \
+    workflow-basic-steps \
+    pipeline-model-definition \
+    workflow-aggregator \
+    generic-webhook-trigger \
+    git \
+    okhttp-api \
+    commons-lang3-api \
+    github-api \
+    token-macro \
+    github \
+    jjwt-api \
+    github-branch-source \
+    http_request \
+    commons-text-api \
+    pipeline-utility-steps \
+    file-operations \
+    pipeline-graph-analysis \
+    pipeline-rest-api \
+    pipeline-stage-view 
+
+RUN echo $'import jenkins.model.Jenkins \n\
+    import hudson.security.* \n\
+    import jenkins.security.s2m.AdminWhitelistRule \n\
+
+    def jenkinsUser = System.getenv("JENKINS_USER") ?: "admin" \n\
+    def jenkinsPass = System.getenv("JENKINS_PASS") ?: "admin" \n\
+    def instance = Jenkins.getInstance() \n\
+    def hudsonRealm = new HudsonPrivateSecurityRealm(false) \n\
+    hudsonRealm.createAccount(jenkinsUser, jenkinsPass) \n\
+    instance.setSecurityRealm(hudsonRealm) \n\
+    def strategy = new FullControlOnceLoggedInAuthorizationStrategy() \n\
+    strategy.setAllowAnonymousRead(false) \n\
+    instance.setAuthorizationStrategy(strategy) \n\
+    instance.save() \n\
+    ' > /usr/share/jenkins/ref/init.groovy.d/init-security.groovy
+
+USER jenkins

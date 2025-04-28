@@ -1,6 +1,10 @@
 plugins {
     id 'groovy'
+    id 'test-report-aggregation'
 }
+
+sourceCompatibility = JavaVersion.VERSION_17
+targetCompatibility = JavaVersion.VERSION_17
 
 repositories {
     mavenCentral()
@@ -14,42 +18,212 @@ dependencies {
 
     testImplementation 'org.codehaus.groovy:groovy-all:3.0.21' 
     // testImplementation 'org.apache.camel:camel-core:3.14.7'
-    testImplementation files('src/main/resources/script')
     testImplementation 'org.spockframework:spock-core:2.3-groovy-3.0'
+    testImplementation 'cglib:cglib-nodep:3.3.0'
+    testImplementation 'net.bytebuddy:byte-buddy:1.14.10'
 }
 
 sourceSets {
     main {
         groovy {
-            srcDirs = ['src/main/resources/script', 'src/main/groovy', 'src/main/groovy/com/sap/gateway/ip/core/customdev/util', 'src/main/groovy/com/sap/it/api']
-            // srcDirs = ['src/main/resources/script','src/main/resources/lib', 'src/main/resources/script/stubs', 'src/main/groovy/com/sap/gateway/ip/core/customdev/util', 'src/main/groovy/com/sap/it/api']
+            srcDirs = [
+                'src/main/resources/script',
+                'src/main/groovy'
+            ]
         }
     }
     test {
         groovy {
             srcDirs = [
-                'src/main/groovy',
-                'src/test/groovy/cases/ilcd', 
-                'src/test/groovy/cases/example',
-                'src/main/resources/data'
+                'src/test/groovy/cases/ilcd',
+                'src/test/groovy/cases/ilcd/data'
             ]
         }
-        // groovy {
-        //     srcDirs = [
-        //         'src/test/groovy',
-        //         'src/main/test',
-        //         'src/main/resources/script/stubs',
-        //         'src/main/groovy/com/sap/gateway/ip/core/customdev/util',
-        //         'src/main/groovy/com/sap/it/api'
-        //     ]
-        // }
     }
 }
 
+// =======================
+// Custom Test Tasks Setup
+// =======================
+
 test {
     useJUnitPlatform()
+    maxParallelForks = Runtime.runtime.availableProcessors().intdiv(2) ?: 1
+    // Advanced test logging
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat = "full"
+        showStandardStreams = true
+    }
+    // Custom reports
+    reports {
+        html.outputLocation = layout.buildDirectory.dir("custom-reports/html")
+        junitXml.outputLocation = layout.buildDirectory.dir("custom-reports/xml")
+    }
+    // Enable fail fast (stop after first failure)
+    failFast = false // Set to true to stop on first failure
 }
+
+// Cleans, runs all tests, and generates reports
+// Usage: ./gradlew testReport
+// Reports: build/custom-reports/html/index.html
+//
 task testReport(dependsOn: ['clean', 'test']) {
     group = 'verification'
     description = 'Cleans, runs tests, and generates reports.'
 }
+
+// -----------------------
+// Per-Spec Test Tasks
+// -----------------------
+// Each task below runs ONLY the tests in the named Spec file.
+// Reports are generated in build/reports/tests/<SpecName>/
+
+task testNotif(type: Test) {
+    useJUnitPlatform()
+    include '**/FrameworkNotificationsSpec.class'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    reports.html.outputLocation = layout.buildDirectory.dir("reports/tests/FrameworkNotificationsSpec")
+}
+
+task testUtils(type: Test) {
+    useJUnitPlatform()
+    include '**/FrameworkUtilsSpec.class'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    reports.html.outputLocation = layout.buildDirectory.dir("reports/tests/FrameworkUtilsSpec")
+}
+
+task testLogger(type: Test) {
+    useJUnitPlatform()
+    include '**/FrameworkLoggerSpec.class'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    reports.html.outputLocation = layout.buildDirectory.dir("reports/tests/FrameworkLoggerSpec")
+}
+
+task testExc(type: Test) {
+    useJUnitPlatform()
+    include '**/FrameworkExceptionHandlerSpec.class'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    reports.html.outputLocation = layout.buildDirectory.dir("reports/tests/FrameworkExceptionHandlerSpec")
+}
+
+task testVM(type: Test) {
+    useJUnitPlatform()
+    include '**/FrameworkValueMapsSpec.class'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    reports.html.outputLocation = layout.buildDirectory.dir("reports/tests/FrameworkValueMapsSpec")
+}
+
+task testConst(type: Test) {
+    useJUnitPlatform()
+    include '**/ConstantsSpec.class'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    reports.html.outputLocation = layout.buildDirectory.dir("reports/tests/ConstantsSpec")
+}
+
+// Composite task: Runs all per-spec test tasks in sequence
+// Usage: ./gradlew testAll
+// Reports: build/reports/tests/<SpecName>/index.html for each
+//
+task testAll {
+    group = 'verification'
+    description = 'Runs all per-spec test tasks (testNotif, testUtils, testLogger, testExc, testVM, testConst)'
+    dependsOn 'test'
+    dependsOn testNotif, testUtils, testLogger, testExc, testVM, testConst
+}
+
+// Composite task: Cleans, then runs all per-spec test tasks in parallel
+// Usage: ./gradlew testAllCleanParallel
+// Reports: build/reports/tests/<SpecName>/index.html for each
+//
+task testAllCleanParallel {
+    group = 'verification'
+    description = 'Cleans, then runs all per-spec test tasks (testNotif, testUtils, testLogger, testExc, testVM, testConst) in parallel.'
+    dependsOn 'clean', 'test', testNotif, testUtils, testLogger, testExc, testVM, testConst
+    mustRunAfter 'clean'
+}
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.hasTask(testAllCleanParallel)) {
+        gradle.startParameter.parallelProjectExecutionEnabled = true
+    }
+}
+
+// --- Test Report Aggregation ---
+tasks.register('aggregateTestReport', TestReport) {
+    testResults.from(tasks.withType(Test))
+    destinationDirectory = layout.buildDirectory.dir('reports/all-tests')
+}
+
+// =======================
+// Advanced Test Features
+// =======================
+
+// Task: Run only failed tests from previous run (if supported by your IDE/runner)
+// Usage: ./gradlew test --tests '*'
+// Or rerun a specific test class:
+//   ./gradlew test --tests 'cases.ilcd.FrameworkNotificationsSpec'
+// Or a specific method:
+//   ./gradlew test --tests 'cases.ilcd.FrameworkNotificationsSpec.resolveEmailRecipients picks error_type from root'
+
+// Task: Allow test failures without failing the build
+// Usage: ./gradlew testAllowFailures
+//
+task testAllowFailures(type: Test) {
+    ignoreFailures = true
+    useJUnitPlatform()
+}
+
+// Task: Run only tests with a specific tag (JUnit5/Spock)
+// Usage: ./gradlew testTagged --tests '*'
+//
+task testTagged(type: Test) {
+    useJUnitPlatform {
+        includeTags 'fast' // Change to your tag
+        // excludeTags 'slow' // Uncomment to exclude certain tags
+    }
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+}
+
+// =======================
+// Usage Instructions
+// =======================
+// Run ALL tests (default Gradle behavior):
+//   ./gradlew test
+//
+// Clean, run all tests, and generate reports:
+//   ./gradlew testReport
+//
+// Run only a specific Spec (examples):
+//   ./gradlew testNotif      // Only FrameworkNotificationsSpec
+//   ./gradlew testUtils      // Only FrameworkUtilsSpec
+//   ./gradlew testLogger     // Only FrameworkLoggerSpec
+//   ./gradlew testExc        // Only FrameworkExceptionHandlerSpec
+//   ./gradlew testVM         // Only FrameworkValueMapsSpec
+//   ./gradlew testConst      // Only ConstantsSpec
+//
+// Run tests with a specific tag:
+//   ./gradlew testTagged
+//
+// Allow test failures (build will not fail):
+//   ./gradlew testAllowFailures
+//
+// Run a specific test class or method:
+//   ./gradlew test --tests 'cases.ilcd.FrameworkNotificationsSpec'
+//   ./gradlew test --tests 'cases.ilcd.FrameworkNotificationsSpec.resolveEmailRecipients picks error_type from root'
+//
+// Run all per-spec test tasks in sequence:
+//   ./gradlew testAll
+//
+// Clean, then run all per-spec test tasks in parallel:
+//   ./gradlew testAllCleanParallel
+//
+// All reports are in build/reports/tests/<SpecName>/index.html or build/custom-reports/html/index.html
+// =======================

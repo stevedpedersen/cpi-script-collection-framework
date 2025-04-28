@@ -1,4 +1,4 @@
-package groovy.cases.ilcd
+package cases.ilcd
 
 import spock.lang.Specification
 import src.main.resources.script.Framework_Logger

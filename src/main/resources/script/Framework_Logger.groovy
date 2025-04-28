@@ -7,7 +7,6 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
-import org.slf4j.LoggerFactory
 
 import src.main.resources.script.Framework_ExceptionHandler
 import src.main.resources.script.Framework_ValueMaps
@@ -62,61 +61,70 @@ class Framework_Logger {
      * @param logLevel     Log severity (e.g. INFO, ERROR)
      * @param logData      Main log message or details
      */
-    def logMessage(String tracePoint, String logLevel, String logData) {
-        def properties      = this.message.getProperties()
-        def projectName     = properties.get(Constants.ILCD.VM_SRC_ID)
-        def integrationID   = properties.get(Constants.ILCD.VM_TRGT_ID)
-        def messageLog      = properties.get(Constants.ILCD.LOG_STACK_PROPERTY)
-        def mpl_logLevel    = properties.get(Constants.Property.MPL_LEVEL_INTERNAL)
-        def vm_logLevel     = interfaceVM("meta_logLevel", projectName, integrationID)
-        
-        this.overallLogLevel = mpl_logLevel ?: vm_logLevel ?: this.settings.defaultOverallLogLevel
-        this.logLevel   = logLevel ?: this.settings.defaultLogLevel
-        this.tracePoint = tracePoint
-        def label       = "#${this.logCounter} ${tracePoint}_LOG"
+    def logMessage(String tracePoint, String logLevel, String logData, boolean isStrictErrorCheck = false) {
+        def properties    = this.message.getProperties()
+        def projectName   = properties.get(Constants.ILCD.VM_SRC_ID)
+        def integrationID = properties.get(Constants.ILCD.VM_TRGT_ID)
+        def messageLog    = properties.get(Constants.ILCD.LOG_STACK_PROPERTY)
+        def mpl_logLevel  = properties.get(Constants.Property.MPL_LEVEL_INTERNAL)
+        def vm_logLevel   = interfaceVM("meta_logLevel", projectName, integrationID)
 
+        // Short-circuit: skip soft error scan if already at ERROR level (prevents duplicate detection/status reset)
+        def scanResults = Framework_ExceptionHandler.checkForSoftError(this.message)
+        debug("soft_err_scan_results", "softError:${scanResults.softError}, isPropagated:${scanResults.isPropagated}", this.messageLog)
+        if (isStrictErrorCheck && scanResults.softError && scanResults?.isPropagated != true) {
+            Framework_ExceptionHandler.throwCustomException(scanResults.reason, scanResults.message)
+        }
+        this.overallLogLevel = mpl_logLevel ?: vm_logLevel ?: this.settings.defaultOverallLogLevel
+        this.logLevel = (isStrictErrorCheck && scanResults.softError && scanResults?.isPropagated != true ? "ERROR" : logLevel) ?: this.settings.defaultLogLevel
+        this.tracePoint = tracePoint
+        def attachmentLabel = "#${this.logCounter} ${tracePoint}_LOG"
+        // Short-circuit: skip this log if the iFlow's log level is set to a less verbose level
         if (!isLoggable(this.overallLogLevel, this.logLevel)) {
-            checkForPayloadLogging(tracePoint, projectName, integrationID)
+            checkForPayloadLogging(tracePoint, projectName, integrationID) // Still do the payload log though
             return
         }
 
-        // Begin constructing log entry
-        def logEntry = [logLevel: this.logLevel, text: (logData ? logData : "Log created at ${getTimestamp()}")]
-        if (this.logLevel == "ERROR") {
-            def errorLocation = properties.get("errorLocation")
-            def errorStepID = properties.get(Constants.Property.SAP_ERR_STEP_ID)
-            def errorType = properties.get(Constants.ILCD.ExceptionHandler.ERR_TYPE_PROPERTY)
-            if (!errorLocation) {
-                def ex = properties.get(Constants.Property.CAMEL_EXC_CAUGHT)
-                if (ex != null) {
-                    def exClass = ex?.getClass() ? ex.getClass()?.getCanonicalName() : ex?.getMessage()
-                    errorLocation = "${Constants.Property.SAP_ERR_STEP_ID}: ${errorStepID} | BTP CI Exception ${exClass}"
-                }
+        try {
+            // Begin constructing log entry
+            def logEntry = [logLevel: this.logLevel, text: (logData ? logData : "Log created at ${getTimestamp()}")]
+            if (this.logLevel == "ERROR") {
+                def errorLocation = properties.get("errorLocation")
+                def errorStepID = properties.get(Constants.Property.SAP_ERR_STEP_ID)
+                def errorType = properties.get(Constants.ILCD.ExceptionHandler.ERR_TYPE_PROPERTY)
+                def isSoftError = properties.get(Constants.SoftError.PROP_IS_SOFT_ERROR)
+                if (!errorLocation) {
+                    def ex = properties.get(Constants.Property.CAMEL_EXC_CAUGHT)
+                    if (ex != null) {
+                        def exClass = ex?.class ? ex.class?.simpleName ?: ex.class?.canonicalName : ex.message
+                        errorLocation = "${Constants.Property.SAP_ERR_STEP_ID}: ${errorStepID} | BTP CI Exception ${exClass}"
+                    }
+                } // Enhance the error log entry with some extra info.
+                logEntry += [errorLocation: errorLocation, errorStepID: errorStepID, errorType: errorType, isSoftError: isSoftError]
             }
-            logEntry += [errorLocation: errorLocation, errorStepID: errorStepID] + (errorType ? [errorType: errorType] : [])
-        }
 
-        def customLogFields = parseCustomAttributes(properties)
-        def combinedLogMessage = [logEntry].collect { it + customLogFields }
-        def combinedLogMessages = (messageLog == null) ? combinedLogMessage : (messageLog + combinedLogMessage)
-        this.message.setProperty(Constants.ILCD.LOG_STACK_PROPERTY, combinedLogMessages)
+            def customLogFields = parseCustomAttributes(properties)
+            def combinedLogMessage = [logEntry].collect { it + customLogFields }
+            def combinedLogMessages = (messageLog == null) ? combinedLogMessage : (messageLog + combinedLogMessage)
+            this.message.setProperty(Constants.ILCD.LOG_STACK_PROPERTY, combinedLogMessages)
 
-        def headerData = prepareHeaderData(projectName, integrationID) ?: [:]
-        def jsonData   = headerData + [messages: combinedLogMessages]
-        def cleanedJson = new JsonBuilder(removeEmptyFields(jsonData)).toPrettyString()
-        def maskedMessage = mask(cleanedJson, projectName, integrationID)
-        // Attach log if eligible
-        if (isAttachable(tracePoint, label)) {
-            attachBodyWithLabel(maskedMessage, label, logEntry?.text)
+            def headerData = prepareHeaderData(projectName, integrationID) ?: [:]
+            def jsonData   = headerData + [messages: combinedLogMessages]
+            def cleanedJson = new JsonBuilder(removeEmptyFields(jsonData)).toPrettyString()
+            def maskedMessage = mask(cleanedJson, projectName, integrationID)
+            // Attach log if eligible
+            if (isAttachable(tracePoint, attachmentLabel)) {
+                attachBodyWithLabel(maskedMessage, attachmentLabel, logEntry?.text, true)
+            }
+            if (this.messageLog != null) { // Simple debug message for trace mode only
+                this.messageLog.setStringProperty(attachmentLabel, logData)
+            }
+            this.message.setProperty("logLevel", "") // @deprecated - use dedicated scripts instead
+            this.message.setProperty("text", "")
+        } finally {
+            debug("logMessage.finally{}", "Checking for payload logging...", this.messageLog)
+            checkForPayloadLogging(tracePoint, projectName, integrationID)
         }
-        if (this.messageLog != null) { // Simple debug message for trace mode only
-            this.messageLog.setStringProperty(label, logData)
-        }
-        this.message.setProperty("logLevel", "") // @deprecated - use dedicated scripts instead
-        this.message.setProperty("text", "")
-        
-        // configurable payload logging
-        checkForPayloadLogging(tracePoint, projectName, integrationID)
     }
 
     def String conclude() {
@@ -140,7 +148,7 @@ class Framework_Logger {
         def maskedMessage = mask(cleanedJson, projectName, integrationID)
 
         if (attachToMpl && isAttachable("FULL_LOG", "#${this.logCounter} FULL_LOG")) {
-            attachBodyWithLabel(maskedMessage, "#${this.logCounter} FULL_LOG")
+            attachBodyWithLabel(maskedMessage, "#${this.logCounter} FULL_LOG", "", true)
         }
         return maskedMessage
     }
@@ -288,9 +296,11 @@ class Framework_Logger {
      */
     private void writeMetaCustomHeaderProperty(String key, Object value) {
         MessageLog log = getOrCreateMessageLog()
-        if (!log || !key || !value) return
+        if (!log || !key || value == null) return
+        def stringValue = value.toString()
+        if (stringValue == null || stringValue.trim().isEmpty() || stringValue.trim().toLowerCase() == "null") return
         def metaKey = "${Constants.ILCD.META_CH_PREFIX}${key}"
-        def metaValue = prepareString(value.toString(), settings.customHeaderCharLimit) 
+        def metaValue = prepareString(stringValue, settings.customHeaderCharLimit) 
         log.addCustomHeaderProperty("${metaKey}", "${metaValue}")
     }
 
@@ -402,23 +412,32 @@ class Framework_Logger {
         def splitSize = props.get(Constants.Property.CAMEL_SPLIT_SIZE)
         def currentIndex = (loopIndex ?: splitIndex)?.toString()?.isInteger() ? (loopIndex ?: splitIndex).toInteger() : 0
         def totalSplits = splitSize?.toString()?.isInteger() ? splitSize.toInteger() : GLOBAL_HARD_LIMIT
-        // finalize vars
-        def isLoopScope = !splitComplete // true if inside a split/loop's final iteration
+        def isLoopScope = !splitComplete && totalSplits > 1
         def normalizedCount = this.logCounter ?: currentIndex
         def isActiveLoopOverLimit = isLoopScope && normalizedCount >= totalSplits
 
-        def endTypes = ["END", "SUMMARY"].any { tracePoint.contains(it) || label.contains(it) }
-        def traceTypes = ["TRACE", "DEBUG", "FULL", "CONCLUDE"].any { tracePoint.contains(it) || label.contains(it) }
-        def traceDebugLevel = ["TRACE", "DEBUG"].contains(this.overallLogLevel)
-        def adapterAttachDisabled = [Constants.Header.DISABLE_ATTACH_HTTP, Constants.Header.DISABLE_ATTACH_ODATAV2, Constants.Header.DISABLE_ATTACH_ODATAV4].any { toBool(headers.get(it)) }
+        def payloadLogPoints = ["PAYLOAD"].any { label?.toUpperCase()?.contains(it) }
+        def endTypes = ["END", "SUMMARY"].any { tracePoint?.toUpperCase()?.contains(it) || label?.toUpperCase()?.contains(it) }
+        def traceTypes = ["TRACE", "DEBUG"].any { tracePoint?.toUpperCase()?.contains(it) || label?.toUpperCase()?.contains(it) }
+        def traceDebugLevel = ["TRACE", "DEBUG"].contains(this.overallLogLevel?.toUpperCase())
         def isRetry = toBool(props.get(Constants.Property.SAP_IS_REDELIVERY_ENABLED)) || (headers.get(Constants.Header.SAP_DATASTORE_RETRIES)?.toInteger() ?: 0) > 0
-        def isError = (tracePoint == "ERROR") || (this.logLevel == "ERROR") || 
+        def isError = (tracePoint?.toUpperCase() == "ERROR") || (this.logLevel?.toUpperCase() == "ERROR") || 
             (props.get(Constants.Property.CAMEL_EXC_CAUGHT) != null) || toBool(props.get(Constants.ILCD.PROP_ILCD_EXC_IN_PROGRESS))
-        
-        // Block if attachments are globally disabled, or hard limit reached
-        if (toBool(settings.attachmentsDisabled) || normalizedCount >= GLOBAL_HARD_LIMIT || adapterAttachDisabled) return false
-        // Always allow attachment for errors, except if we're in a loop and over hard limit
-        if (isError && !isActiveLoopOverLimit) return true
+
+        // DEBUG: Print all relevant state for troubleshooting
+        if(tracePoint?.toUpperCase() == "END" && label?.toUpperCase()?.contains("PAYLOAD")) {
+            def debugMsg = "isAttachable debug: tracePoint=${tracePoint}, label=${label}, payloadLogPoints=${payloadLogPoints}, isLoopScope=${isLoopScope}, normalizedCount=${normalizedCount}, totalSplits=${totalSplits}, isActiveLoopOverLimit=${isActiveLoopOverLimit}, attachmentsDisabled=${toBool(settings.attachmentsDisabled)}, hardLimit=${normalizedCount >= GLOBAL_HARD_LIMIT}, labelFullLog=${label?.contains('FULL_LOG')}, isError=${isError}, endTypes=${endTypes}, isRetry=${isRetry}, splitComplete=${splitComplete}"
+            debug("isAttachable_debug_log", debugMsg, this.messageLog)
+        }
+
+        // Block if attachments are globally disabled, or hard limit reached, or label is a full log
+        if (toBool(settings.attachmentsDisabled) || normalizedCount >= GLOBAL_HARD_LIMIT || label?.toUpperCase()?.contains("FULL_LOG")) return false
+        // Always allow attachment for errors or configured payload points, except if we're in a loop and over hard limit
+        if ((isError || payloadLogPoints)) {
+            // Allow if not over limit, or if this is the final split iteration (splitComplete==true and normalizedCount==totalSplits)
+            if (!isActiveLoopOverLimit || (splitComplete && normalizedCount == totalSplits)) return true
+            return false
+        }
         // End logs
         if (endTypes && !isActiveLoopOverLimit && !isRetry) return normalizedCount < (ATTACH_SOFT_LIMIT + 1)
         // All other non-trace logs
@@ -453,15 +472,12 @@ class Framework_Logger {
         }
     }
 
-    /**
-     * Update usage in attachBodyWithLabel and createAttachment
-     */
-    def attachBodyWithLabel(String body, String label, String fallbackSimpleLogMsg = "") {
+    def attachBodyWithLabel(String body, String label, String fallbackSimpleLogMsg = "", boolean incrementCounter = true) {
         try {
             def log = getOrCreateMessageLog()
             if (log != null) {
                 if (isAttachable(this.tracePoint, label)) {
-                    setLogCounterOnAttach() // increment only when attaching
+                    if (incrementCounter) setLogCounterOnAttach() // increment only when attaching and allowed
                     createAttachment(label, body, "text/plain", log)
                 } else if (fallbackSimpleLogMsg) {
                     log.setStringProperty(label, fallbackSimpleLogMsg)
@@ -512,7 +528,7 @@ class Framework_Logger {
      * The intent is to log the internal exception while allowing for execution 
      * to continue. This does have a downside in that we get a limited stacktrace.
      */
-    static void handleScriptError(
+    public static void handleScriptError(
         Message message, 
         MessageLog messageLog, 
         Exception e, 
@@ -520,13 +536,22 @@ class Framework_Logger {
         boolean printStackTrace = false, 
         String customData = ""
     ) {
-        def log4j = LoggerFactory.getLogger("Framework_Logger")
+        final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger("Framework_Logger")
+        // --- Unwrap and re-throw custom soft error exceptions if found ---
+        def softErrorEx = src.main.resources.script.Framework_ExceptionHandler.findCauseByClass(e, [
+            Constants.SoftError.EXC_CLASS
+        ])
+        debug("handleScriptError.softErrorEx", "${softErrorEx} | ${e.getClass()}", messageLog)
+        if (softErrorEx != null) {
+            LOG.debug("handleScriptError caught a custom soft error exception. Re-throwing ${softErrorEx.class} - ${softErrorEx.message}")
+            throw softErrorEx
+        }
         if (!messageLog) {
-            log4j.warn("handleScriptError called with a null MPL reference. Unable to log the exception.")
+            LOG.warn("handleScriptError called with a null MPL reference. Unable to log the exception.")
             return
         }
         if (message.getProperty(Constants.ILCD.PROP_ILCD_EXC_IN_PROGRESS) == true) {
-            log4j.error("handleScriptError called recursively. Skipping second attempt to avoid infinite loop.", e)
+            LOG.error("handleScriptError called recursively. Skipping second attempt to avoid infinite loop.", e)
             return
         }
         message.setProperty(Constants.ILCD.PROP_ILCD_EXC_IN_PROGRESS, true)
@@ -552,14 +577,14 @@ class Framework_Logger {
             createAttachment(errorLabel, errorMessage.toString(), "text/plain", messageLog)
             messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}", "true")
             messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ScriptName", function)
-            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.getClass()?.getName())
+            messageLog.addCustomHeaderProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.class.canonicalName)
             messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ScriptName", function)
-            messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.getClass()?.getName())
+            messageLog.setStringProperty("${Constants.ILCD.EXC_PREFIX}-ErrorClass", e.class.canonicalName)
         } catch (Exception innerEx) {
-            log4j.error("handleScriptError: Could not attach error; skipping to avoid recursion.", innerEx)
+            LOG.error("handleScriptError: Could not attach error; skipping to avoid recursion.", innerEx)
         } finally {
             // message.setProperty(Constants.ILCD.PROP_ILCD_EXC_IN_PROGRESS, false)
-            log4j.error("${errorLabel} occurred: ${e.message}", e)
+            LOG.error("${errorLabel} occurred: ${e.message}", e)
         }
     }
 
@@ -585,10 +610,13 @@ class Framework_Logger {
         return "${border}\n${input}\n${border}\n" // Titles are underlined with a border
     }
 
-    private boolean toBool(Object rawValue) {
-        if (rawValue == null) return false 
-        if (rawValue instanceof Boolean) return (Boolean) rawValue
-        return Boolean.parseBoolean(rawValue.toString())
+    // Utility: robust toBool for test and prod
+    static boolean toBool(def v) {
+        if (v == null) return false
+        if (v instanceof Boolean) return v
+        if (v instanceof String) return v.equalsIgnoreCase('true') || v == '1'
+        if (v instanceof Number) return v != 0
+        return false
     }
 
     private void handleValidationError(Exception e, String function, boolean critical = false) {
@@ -600,15 +628,25 @@ class Framework_Logger {
      * Check for payload logging settings and attach payload if configured
      */
     private void checkForPayloadLogging(String tracePoint, String projectName, String integrationID) {
-        // If we're in trace mode then no need to attach the payload since it'll be available already.
-        if (this.logLevel == "TRACE") return
-        int maxLines = this.settings.maxPayloadLines.toString().isInteger() ? this.settings.maxPayloadLines.toString().toInteger() : 1000
-        def allowedPayloadLogPoints = this.settings.allowedPayloadLogPoints.trim().split(",").toList() ?: []
-        def interfaceLogPoints = interfaceVM("loggerPayloadLogPoints", projectName, integrationID, "").trim().split(",").toList() ?: []
-        def logPointsToCheck = allowedPayloadLogPoints.intersect(interfaceLogPoints) ?: []
-
-        // Verifies VM settings and checks what kind of log it is (ie START, END, etc.)
-        if (logPointsToCheck.contains(tracePoint)) {
+        def normalizedTracePoint = tracePoint?.trim()?.toUpperCase()
+        def allowedPayloadLogPoints = []
+        def interfaceLogPoints = []
+        try {
+            int maxLines = this.settings.maxPayloadLines.toString().isInteger() ? this.settings.maxPayloadLines.toString().toInteger() : 1000
+            allowedPayloadLogPoints = this.settings.allowedPayloadLogPoints
+                .split(",")
+                .collect { it.trim().toUpperCase() }.findAll { it }
+            interfaceLogPoints = interfaceVM("loggerPayloadLogPoints", projectName, integrationID, "")
+                .split(",")
+                .collect { it.trim().toUpperCase() }.findAll { it }
+        } catch (Exception e) {
+            this.messageLog.setStringProperty("PAYLOAD_LOG_NOT_ENABLED", "Failed to attach full payload. ${e.message}")
+        }
+        def result = allowedPayloadLogPoints.contains(normalizedTracePoint) && interfaceLogPoints.contains(normalizedTracePoint)
+        debug("checkForPayloadLogging_debug", "result - ${result}, interfaceLogPoints - ${interfaceLogPoints}, allowedPayloadLogPoints - ${allowedPayloadLogPoints},   normalizedTracePoint - ${normalizedTracePoint}", this.messageLog)
+        if (!normalizedTracePoint || !allowedPayloadLogPoints || !interfaceLogPoints) return
+        
+        if (allowedPayloadLogPoints.contains(normalizedTracePoint) && interfaceLogPoints.contains(normalizedTracePoint)) {
             try {
                 def reader = message.getBody(java.io.InputStream)
                 if (reader == null) return
@@ -623,13 +661,12 @@ class Framework_Logger {
                         return false
                     }
                 }
-                attachBodyWithLabel("PAYLOAD_${tracePoint}", payload.toString(), "text/plain", this.messageLog)
+                attachBodyWithLabel(payload.toString(), "PAYLOAD_${tracePoint}", "Attempted to log payload...", false)
             } catch (Exception e) {
                 try { // try one more time
-                    attachBodyWithLabel("PAYLOAD_${tracePoint}", message.getBody(String.class), "text/plain", this.messageLog)
+                    attachBodyWithLabel(this.message.getBody(String.class), "PAYLOAD_${tracePoint}",  "Attempted to log payload again...", false)
                 } catch (Exception ignored) {
-                    this.messageLog.setStringProperty("PAYLOAD_LOG_FAILED", 
-                        "Failed to attach full payload. If TRACE mode is enabled, the payload can be obtained from trace logs.")
+                    this.messageLog.setStringProperty("PAYLOAD_LOG_FAILED", "Failed to attach full payload. ${e.message}")
                 }
             }
         }
@@ -640,18 +677,24 @@ class Framework_Logger {
      */
     private Map getSystemDetails() {
         try {
+            def ctx = this.message?.exchange?.context
             return [
                 javaVersion: System.properties['java.version'],
                 groovyVersion: GroovySystem.version,
                 tenantName: System.getenv("TENANT_NAME") ?: System.properties['com.sap.it.node.tenant.name'], 
                 tenantID: System.getenv("TENANT_NAME") ?: System.properties['com.sap.it.node.tenant.id'],
                 cfInstanceID: System.getenv("CF_INSTANCE_INDEX"),
-                camelVersion: this.message.exchange.context.version,
-                camelUptime: this.message.exchange.context.uptime
+                camelVersion: ctx?.version,
+                camelUptime: ctx?.uptime
             ]
         } catch (Exception e) {
             handleScriptError(message, messageLog, e, "Framework_Logger.getSystemDetails", false)
             return [:]
         }
+    }
+
+    static void debug(key, value, log) {
+        if (!log || !key || !value) return
+        log.setStringProperty("${key}", "${value}")
     }
 }

@@ -1,20 +1,42 @@
-import src.main.resources.data.TestData
+package cases.ilcd
+import cases.ilcd.data.TestData
+import src.main.resources.script.Framework_Logger
 class TestHelper {
-    static String sampleBody = "Hello World"
-    static Map<String,Object> sampleHeaders = new TestData().SAP_STANDARD_HEADERS
-    static Map<String,Object> sampleProperties = new TestData().SAP_STANDARD_PROPERTIES
+    static {
+        // Global mock: disables getSystemDetails errors in ALL tests
+        Framework_Logger.metaClass.getSystemDetails = { -> [:] }
+    }
+    static String sampleBody = '{"projectName":"proj","integrationID":"int","messages":[{"logLevel":"ERROR","text":"fail"}]}'
+    static Map sampleHeaders = [SAP_MplCorrelationId: 'Abc123deF456GHi789_jKl0']
+    static Map sampleProperties = [integrationID: "I-0123-MasterData", projectName: "Transcend", SAP_MessageProcessingLogID: 'Abc123deF456GHi789_jKl0'] 
+
     static def makeSAPMessage(Map opts = [:]) {
         def msg = new com.sap.gateway.ip.core.customdev.util.Message()
-        def headers = sampleHeaders + (opts.headers ?: [:])
-        def props = sampleProperties + (opts.properties ?: [:])
-        headers.each { k, v -> msg.setHeader(k, v) }
-        props.each { k, v -> msg.setProperty(k, v) }
-        msg.setBody(opts.body ?: sampleBody)
+        def ctx = new org.apache.camel.impl.DefaultCamelContext()
+        def exch = new org.apache.camel.support.DefaultExchange(ctx)
+        msg.exchange = exch
+        // Always provide a valid JSON body if not explicitly set or if blank/null/whitespace
+        def body = opts.body
+        if (!(body instanceof String) || !body?.trim()) {
+            body = sampleBody
+        }
+        msg.setBody(body)
+        // Debug output after setting body
+        println "DEBUG: (makeSAPMessage) body after setBody: ${msg.getBody(String)}"
+        (opts.headers ?: sampleHeaders).each { k, v -> msg.setHeader(k, v) }
+        (opts.properties ?: sampleProperties).each { k, v -> msg.setProperty(k, v) }
         return msg
     }
     static def makeMessage(Map opts = [:]) {
         def msg = new com.sap.gateway.ip.core.customdev.util.Message()
-        msg.setBody(opts.body ?: sampleBody)
+        def ctx = new org.apache.camel.impl.DefaultCamelContext()
+        def exch = new org.apache.camel.support.DefaultExchange(ctx)
+        msg.exchange = exch
+        def body = opts.body
+        if (!(body instanceof String) || !body?.trim()) {
+            body = sampleBody
+        }
+        msg.setBody(body)
         (opts.headers ?: sampleHeaders).each { k, v -> msg.setHeader(k, v) }
         (opts.properties ?: sampleProperties).each { k, v -> msg.setProperty(k, v) }
         return msg

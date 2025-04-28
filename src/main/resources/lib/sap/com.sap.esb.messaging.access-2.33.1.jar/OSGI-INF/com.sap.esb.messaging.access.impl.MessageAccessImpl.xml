@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scr:component xmlns:scr="http://www.osgi.org/xmlns/scr/v1.2.0" name="com.sap.esb.messaging.access.impl.MessageAccessImpl">
+  <service>
+    <provide interface="com.sap.esb.messaging.access.MessageAccess"/>
+  </service>
+  <implementation class="com.sap.esb.messaging.access.impl.MessageAccessImpl"/>
+</scr:component>

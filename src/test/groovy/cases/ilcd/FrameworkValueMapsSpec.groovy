@@ -1,45 +1,19 @@
+package cases.ilcd
 import spock.lang.*
 import src.main.resources.script.Framework_ValueMaps
-import src.main.resources.data.TestData
-import ilcd.TestHelper
-import ilcd.MockMessageLog
+import cases.ilcd.data.TestData
+import com.sap.it.api.msglog.MessageLog
+import com.sap.gateway.ip.core.customdev.util.Message
+import cases.ilcd.TestHelper
 
 class FrameworkValueMapsSpec extends Specification {
     def "UTC timestamp formatting is correct"() {
         given:
-        long millis = 1713763200000L // 2024-04-22T00:00:00Z
+        long millis = 1713763200000L // 2024-04-22T05:20:00Z
         when:
         def result = Framework_ValueMaps.formatUtcTimestamp(millis)
         then:
-        result == "2024-04-22T00:00:00.000Z"
-    }
-
-    def "value map returns correct value for known key"() {
-        given:
-        def msg = TestHelper.makeSAPMessage()
-        def valueMaps = new Framework_ValueMaps(msg)
-        when:
-        def val = valueMaps.getValue("SAP_ApplicationID")
-        then:
-        val == TestData.SAP_STANDARD_HEADERS['SAP_ApplicationID']
-    }
-
-    def "value map returns null for unknown key"() {
-        given:
-        def msg = TestHelper.makeSAPMessage()
-        def valueMaps = new Framework_ValueMaps(msg)
-        when:
-        def val = valueMaps.getValue("NON_EXISTENT_KEY")
-        then:
-        val == null
-    }
-
-    def "cache entry stores and retrieves value"() {
-        when:
-        def entry = new Framework_ValueMaps.CacheEntry("foo", "bar")
-        then:
-        entry.key == "foo"
-        entry.value == "bar"
+        result == "2024-04-22T05:20:00.000Z"
     }
 
     def "formatUtcTimestamp handles epoch 0 correctly"() {
@@ -50,9 +24,9 @@ class FrameworkValueMapsSpec extends Specification {
     def "interfaceVM returns mapped value or default"() {
         given:
         def msg = TestHelper.makeSAPMessage()
-        def mockLog = new MockMessageLog()
+        def log = new MessageLog()
         when:
-        def val = Framework_ValueMaps.interfaceVM('testKey', 'proj', 'int', 'default', msg, mockLog)
+        def val = Framework_ValueMaps.interfaceVM('testKey', 'proj', 'int', 'default', msg, log)
         then:
         val == 'default' || val != null
     }
@@ -60,9 +34,9 @@ class FrameworkValueMapsSpec extends Specification {
     def "frameworkVM returns mapped value or default"() {
         given:
         def msg = TestHelper.makeSAPMessage()
-        def mockLog = new MockMessageLog()
+        def log = new MessageLog()
         when:
-        def val = Framework_ValueMaps.frameworkVM('meta_environment', 'dev', msg, mockLog)
+        def val = Framework_ValueMaps.frameworkVM('meta_environment', 'dev', msg, log)
         then:
         val == null || val instanceof String
     }

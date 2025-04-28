@@ -13,26 +13,38 @@ class Message {
     Map<String, Object> properties
 
     Message() {
-        this.exchange = new DefaultExchange(new DefaultCamelContext())
+        def ctx = new DefaultCamelContext()
+        this.exchange = new DefaultExchange(ctx)
         this.headers = [:]
         this.properties = [:]
     }
 
     public <K> K getBody(Class<K> klass) throws TypeConversionException {
-        return this.exchange.getIn().getBody(klass) ?: null
+        // FIX: Return from this.body if set, fallback to exchange.getIn().body
+        if (this.body != null) {
+            if (klass == String) {
+                return this.body.toString()
+            }
+            return this.body as K
+        }
+        def inObj = this.exchange.getIn()
+        if (klass == String) {
+            return inObj.body?.toString() ?: null
+        }
+        return inObj.body as K ?: null
     }
 
     void setBody(Object body) {
-        // Set exchange body in case automatic Type Conversion is required
         this.exchange.getIn().setBody(body)
-        this.body = this.exchange.getIn().getBody()
+        this.body = body
     }
 
     public <K> K getHeader(String name, Class<K> klass) throws TypeConversionException {
-        if (!this.exchange.getIn().getHeader(name)) {
+        def value = this.exchange.getIn().getHeader(name)
+        if (!value) {
             return null
         } else {
-            return this.exchange.getIn().getHeader(name, klass) ?: null
+            return value as K ?: null
         }
     }
 
@@ -42,10 +54,13 @@ class Message {
     }
 
     void setProperty(String name, Object value) {
-        this.properties.put(name, value)
+        // Always use string keys for consistency
+        this.properties.put(name?.toString(), value)
     }
 
     Object getProperty(String name) {
-        return this.properties.get(name)
+        // Always use string keys for consistency
+        // println "[Message] key - ${name}, value - ${this.properties.get(name?.toString())}"
+        return this.properties.get(name?.toString())
     }
 }

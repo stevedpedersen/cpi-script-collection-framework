@@ -134,18 +134,18 @@ class Framework_ValueMaps {
      */
     private static String getCachedOrFetch(String key, String srcId, String targetId, String defaultValue, Message message, MessageLog messageLog, int ttlSeconds = DEFAULT_TTL_SECONDS) {
         // Check disabled
-        def staticCacheDisabled = message.getProperty("cache_disabled") != null ? 
-            message.getProperty("cache_disabled") : Framework_API.securestoreGetParam("cache_disabled")
+        def staticCacheDisabled = message.getProperty(Constants.ILCD.Cache.SPARAM_IS_DISABLED) != null ? 
+            message.getProperty(Constants.ILCD.Cache.SPARAM_IS_DISABLED) : Framework_API.securestoreGetParam(Constants.ILCD.Cache.SPARAM_IS_DISABLED)
         def disableCachingValueMapEntries = staticCacheDisabled && staticCacheDisabled.toString().toLowerCase() == "true"
-        message.setProperty("cache_disabled", "${disableCachingValueMapEntries}")
+        message.setProperty(Constants.ILCD.Cache.SPARAM_IS_DISABLED, "${disableCachingValueMapEntries}")
         if (disableCachingValueMapEntries) {
             return Framework_ValueMaps.getValueMapping(key, srcId, targetId, message, messageLog) ?: defaultValue
         }
         // Check TTL
         def now = System.currentTimeMillis()
-        def ttl = message.getProperty("cache_ttl_seconds") != null ? message.getProperty("cache_ttl_seconds") : Framework_API.securestoreGetParam("cache_ttl_seconds")
+        def ttl = message.getProperty(Constants.ILCD.Cache.SPARAM_TTL) != null ? message.getProperty(Constants.ILCD.Cache.SPARAM_TTL) : Framework_API.securestoreGetParam(Constants.ILCD.Cache.SPARAM_TTL)
         ttlSeconds = (ttl != null && ttl.toString().isInteger()) ? ttl.toInteger() : DEFAULT_TTL_SECONDS
-        message.setProperty("cache_ttl_seconds", "${ttlSeconds}")
+        message.setProperty(Constants.ILCD.Cache.SPARAM_TTL, "${ttlSeconds}")
 
         def cacheKey = getCacheKey(key, srcId, targetId)
         def entry = cache[cacheKey]
@@ -172,18 +172,18 @@ class Framework_ValueMaps {
     private static void updateCacheStats(String type, String cacheKey, long expiry, Message message, MessageLog messageLog) {
         try {
             // Check datastore cache stats enabled
-            def dsEnabled = message.getProperty("cache_stats_datastore_enabled") != null ? 
-                message.getProperty("cache_stats_datastore_enabled") : Framework_API.securestoreGetParam("cache_stats_datastore_enabled")
+            def dsEnabled = message.getProperty(Constants.ILCD.Cache.SPARAM_DS_STATS) != null ? 
+                message.getProperty(Constants.ILCD.Cache.SPARAM_DS_STATS) : Framework_API.securestoreGetParam(Constants.ILCD.Cache.SPARAM_DS_STATS)
             def enableSavingCacheStatsToDatastore = dsEnabled && dsEnabled.toString().toLowerCase() == "true"
-            message.setProperty("cache_stats_datastore_enabled", "${enableSavingCacheStatsToDatastore}")
+            message.setProperty(Constants.ILCD.Cache.SPARAM_DS_STATS, "${enableSavingCacheStatsToDatastore}")
 
             def (srcId, tgtId, entryKey) = cacheKey.split(":").size() == 3 ? cacheKey.split(":", 3) : []
             def interfaceKey = "${srcId}:${tgtId}"
             def typeCount = 0
 
             if (enableSavingCacheStatsToDatastore) {
-                def hourKey = new Date().format("yyyyMMddHH")
-                def statsJson = Framework_API.datastoreGet("CacheStats", hourKey)
+                def dsEntryId = new Date().format("yyyyMMddHH")
+                def statsJson = Framework_API.datastoreGet(Constants.ILCD.Cache.DATASTORE, dsEntryId)
                 def stats
                 if (!statsJson) {
                     stats = [hits:0, misses:0, entries: [:]]
@@ -203,7 +203,7 @@ class Framework_ValueMaps {
                     typeCount = stats.misses
                 }
                 stats.entries[interfaceKey][entryKey] = formatUtcTimestamp(expiry) ?: expiry
-                Framework_API.datastorePut("CacheStats", hourKey, JsonOutput.toJson(stats), true)
+                Framework_API.datastorePut(Constants.ILCD.Cache.DATASTORE, dsEntryId, JsonOutput.toJson(stats), true)
                 message.setProperty("cache_${type}_count", (type == "hit" ? "${stats.hits}" : "${stats.misses}"))
             } else {
                 def prop = type == "hit" ? "cache_hit_count" : "cache_miss_count"

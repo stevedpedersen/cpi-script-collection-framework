@@ -1,0 +1,26 @@
+Manifest-Version: 1.0
+Build-Jdk-Spec: 1.8
+Bundle-DocURL: http://www.sap.com
+Bundle-ManifestVersion: 2
+Bundle-Name: com.sap.esb.messaging.access
+Bundle-SymbolicName: com.sap.esb.messaging.access
+Bundle-Vendor: SAP
+Bundle-Version: 2.33.1
+Created-By: Apache Maven Bundle Plugin 5.1.9
+Export-Package: com.sap.esb.messaging.access;version="1.9.0";uses:="co
+ m.sap.esb.messaging.solace.jcsmp,com.solacesystems.jcsmp,javax.jms"
+Import-Package: com.sap.esb.messaging.access;version="[1.9,1.10)",com.
+ sap.esb.messaging.solace.jcsmp;version="[1.0,2)",com.solacesystems.jc
+ smp;version="[10.18,11)",javax.jms;version="[1.1,2)",org.slf4j;versio
+ n="[1.7,2)"
+Include-Resource: com/sap/esb/messaging/access/packageinfo=src/main/ja
+ va/com/sap/esb/messaging/access/packageinfo
+Provide-Capability: osgi.service;objectClass:List<String>="com.sap.esb
+ .messaging.access.MessageAccess";uses:="com.sap.esb.messaging.access"
+Require-Capability: osgi.extender;filter:="(&(osgi.extender=osgi.compo
+ nent)(version>=1.4.0)(!(version>=2.0.0)))",osgi.ee;filter:="(&(osgi.e
+ e=JavaSE)(version=1.8))"
+Service-Component: OSGI-INF/com.sap.esb.messaging.access.impl.MessageA
+ ccessImpl.xml
+Tool: Bnd-6.3.1.202206071316
+

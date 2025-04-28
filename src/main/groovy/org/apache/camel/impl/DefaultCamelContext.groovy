@@ -4,11 +4,15 @@ class DefaultCamelContext {
     Object body
     Map<String, Object> headers
     Map<String, Object> properties
+    String version
+    String uptime
 
     DefaultCamelContext() {
         this.body = ""
         this.headers = [:]
         this.properties = [:]
+        this.version = "3.14.7"
+        this.uptime = "forever"
     }
 
     public Object getBody() {

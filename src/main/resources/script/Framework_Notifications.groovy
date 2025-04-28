@@ -4,13 +4,11 @@ import com.sap.gateway.ip.core.customdev.util.Message
 import com.sap.it.api.msglog.MessageLog
 
 import src.main.resources.script.Framework_ValueMaps
-import src.main.resources.script.Framework_Logger
 import src.main.resources.script.Constants
 
 class Framework_Notifications {
     Message message
     MessageLog messageLog
-    Framework_Logger logger
 
     Framework_Notifications(Message message, MessageLog messageLog) {
         this.message = message
@@ -29,10 +27,10 @@ class Framework_Notifications {
         def integrationID = properties.getOrDefault("integrationID", jsonObject?.integrationID) ?: ""
         def meta_environment = Framework_ValueMaps.frameworkVM("meta_environment", System.getenv("TENANT_NAME"), message, messageLog)
         def meta_integrationName = interfaceVM("meta_integrationName", projectName, integrationID, integrationID)
-        def emailRecipients = resolveEmailRecipients(jsonObject, projectName, integrationID)
-        message.setProperty("emailRecipients", emailRecipients)
-
-        String emailSubject = "BTP CI - ${meta_environment} - ${meta_integrationName} [${jsonObject?.errorType}]"
+        def recipientResult = resolveEmailRecipients(jsonObject, projectName, integrationID)
+        message.setProperty("emailRecipients", recipientResult.emailRecipients)
+        // We can set the errorType in the subject after resolving the email recipients
+        String emailSubject = "BTP CI - ${meta_environment} - ${meta_integrationName} [${recipientResult.errorType} ERROR]"
         message.setProperty("emailSubject", emailSubject)
 
         // Generate an HTML table row containing a link to the MPL/cALM dashboard for this message
@@ -55,12 +53,12 @@ class Framework_Notifications {
         
         // Filter specified emailFilterValues logs only
         if (!message.getProperty("isEmailFilterApplied")) {
-            // def logger = new Framework_Logger(message, messageLog)
             def emailFilterValues = interfaceVM("emailFilterValues", projectName, integrationID, "E")
             def filterValues = emailFilterValues.toUpperCase().split(",").collect {
                 Constants.ILCD.normalizeLogLevel(it.trim())
             }
-            def filteredItems = (jsonObject.messages instanceof List ? jsonObject.messages : [jsonObject.messages]).findAll { 
+            def filteredItems = (jsonObject.messages instanceof List ? jsonObject.messages : [jsonObject.messages]).findAll {
+                if (it == null) return false
                 def itemLevel = Constants.ILCD.normalizeLogLevel(it.logLevel)
                 filterValues.contains(itemLevel)
             }
@@ -75,7 +73,7 @@ class Framework_Notifications {
     /**
      * Resolves the correct email recipients based on errorType (functional/technical) with fallback.
      */
-    private String resolveEmailRecipients(def jsonObject, String projectName, String integrationID) {
+    private Map resolveEmailRecipients(def jsonObject, String projectName, String integrationID) {
         def errTypeFallback = Constants.ILCD.ExceptionHandler.VM_KEY_EMAIL_RECIP_TECH
         def errTypeProp = this.message ? this.message.getProperty(Constants.ILCD.ExceptionHandler.ERR_TYPE_PROPERTY) : null
         def errTypeJson = jsonObject?.errorType ? jsonObject.errorType.toString()?.toUpperCase() : jsonObject[Constants.ILCD.ExceptionHandler.MPL_CH_ERR_TYPE]
@@ -110,7 +108,7 @@ class Framework_Notifications {
             messageLog.addCustomHeaderProperty("resolved_emailRecipients", 
             "Used key: ${recipientKey}, value: ${emailRecipients ?: '[empty]'}")
         }
-        return emailRecipients
+        return [emailRecipients: emailRecipients, errorType: normalizedType]
     }
 
     /**
@@ -151,8 +149,8 @@ class Framework_Notifications {
     private String formatPropertyName(String propertyName) {
         propertyName
             .replaceAll("_", " ")
+            .replaceAll(/([a-z])([A-Z])/, '$1 $2')
             .split(' ').collect { it.capitalize() }.join(' ')
-            .replaceAll(/([a-z])([A-Z])/, '$1 $2').capitalize()
     }
 
     /**

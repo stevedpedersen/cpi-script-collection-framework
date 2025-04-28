@@ -8,6 +8,7 @@ import src.main.resources.script.Framework_Logger
  *  - errorStatusCode
  *  - errorExceptionMessage
  *  - errorExceptionClass
+ *  - errorType
  */
 def Message processData(Message message) {
     def messageLog = messageLogFactory.getMessageLog(message)

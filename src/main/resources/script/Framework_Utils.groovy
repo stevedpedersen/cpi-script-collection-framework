@@ -11,9 +11,6 @@ import src.main.resources.script.Constants
 
 
 class Framework_Utils {
-
-	static final String CLASSNAME = "Framework_Utils"
-
 	Message message
     MessageLog messageLog
     Framework_Logger logger
@@ -34,7 +31,7 @@ class Framework_Utils {
 		try {
 			return formatResponse("xml")
 		} catch (Exception e) {
-			this.logger.handleScriptError(e, "Framework_Utils.formatResponseXml", false)
+			this.logger.handleScriptError(this.message, this.messageLog, e, "Framework_Utils.formatResponseXml", false)
 			throw e
 		}
     }
@@ -49,7 +46,7 @@ class Framework_Utils {
 		try {
 			return formatResponse("json")
 		} catch (Exception e) {
-			this.logger.handleScriptError(e, "Framework_Utils.formatResponseJson", false)
+			this.logger.handleScriptError(this.message, this.messageLog, e, "Framework_Utils.formatResponseJson", false)
 			throw e
 		}
     }
@@ -61,37 +58,65 @@ class Framework_Utils {
      * @return The formatted response.
      */
     def String formatResponse(String format) {
-		def headers = this.message.getHeaders()
-		def properties = this.message.getProperties()
-		def jsonBodyString = this.logger.conclude()
-		def json = new JsonSlurper().parseText(jsonBodyString)
+        // Null handling patch: if message, logger, or body is missing, return a minimal response
+        if (!this.message || !this.logger) {
+            return fallbackToGenericResponse(format, null)
+        }
+        def headers = this.message.getHeaders() ?: [:]
+        def properties = this.message.getProperties() ?: [:]
+        def jsonBodyString
+        try {
+            jsonBodyString = this.logger.conclude()
+        } catch (Exception e) {
+            return fallbackToGenericResponse(format, this.message)
+        }
+        if (!jsonBodyString) {
+            return fallbackToGenericResponse(format, this.message)
+        }
+        def json
+        try {
+            json = new JsonSlurper().parseText(jsonBodyString)
+        } catch (Exception e) {
+            return fallbackToGenericResponse(format, this.message)
+        }
+        def correlationID = headers?.get(Constants.Header.SAP_CORRELATION_ID)
+        if (!json?.correlationID && correlationID) {
+            json = [correlationID: correlationID] + json
+        }
 
-		def correlationID = headers?.get(Constants.Header.SAP_CORRELATION_ID)
-		if (!json?.correlationID && correlationID) {
-			json = [correlationID: correlationID] + json
-		}
+        def xmlResponse, jsonResponse
+        def hasError = json?.messages?.any { it.logLevel == 'ERROR' || it.errorLocation }
+        if (hasError) {
+            // Error response formatting
+            def errorDetails = json.messages.find { it.logLevel == 'ERROR' && it.errorLocation }
+            xmlResponse = createXmlErrorResponse(errorDetails, json)
+            jsonResponse = createJsonErrorResponse(errorDetails, json)
+        } else {
+            // Success response formatting
+            xmlResponse = createXmlSuccessResponse(json)
+            jsonResponse = createJsonSuccessResponse(json)
+        }
 
-		def xmlResponse, jsonResponse
-		def hasError = json.messages.any { it.logLevel == 'ERROR' || it.errorLocation }
+        // Set the formatted responses as properties
+        message.setProperty("xmlResponse", xmlResponse)
+        message.setProperty("jsonResponse", jsonResponse)
 
-		if (hasError) {
-			// Error response formatting
-			def statusCode = this.message
-			def errorDetails = json.messages.find { it.logLevel == 'ERROR' && it.errorLocation }
-			xmlResponse = createXmlErrorResponse(errorDetails, json)
-			jsonResponse = createJsonErrorResponse(errorDetails, json)
-		} else {
-			// Success response formatting
-			xmlResponse = createXmlSuccessResponse(json)
-			jsonResponse = createJsonSuccessResponse(json)
-		}
-
-		// Set the formatted responses as properties
-		message.setProperty("xmlResponse", xmlResponse)
-		message.setProperty("jsonResponse", jsonResponse)
-
-		return format.equalsIgnoreCase("json") ? JsonOutput.prettyPrint(jsonResponse) : xmlResponse
+        return format.equalsIgnoreCase("json") ? JsonOutput.prettyPrint(jsonResponse) : xmlResponse
     }
+
+	def String fallbackToGenericResponse(String format, message) {
+		if (!message) {
+			return format.equalsIgnoreCase("json") 
+				? '{"Code":"500","Message":"Internal Server Error","Details":{}}' 
+				: '<Error><Code>500</Code><Message>Internal Server Error</Message><ErrorDetails/></Error>'
+		}
+		def msgId = message.getProperty(Constants.Property.SAP_MPL_ID) ?: 'N/A'
+		def corId = message.getHeader(Constants.Header.SAP_CORRELATION_ID, String.class) ?: 'N/A'
+		def status = message.getProperty(Constants.Property.MPL_CUSTOM_STATUS) ?: 'Failed'
+		def json = '{"Code":"500","Message":"Internal Server Error","Details":{"MessageID":"${msgId}","CorrelationID":"${corId}","CustomStatus":"${status}"}}'
+		def xml = "<Error><Code>500</Code><Message>Internal Server Error</Message><ErrorDetails><MessageID>${msgId}</MessageID><CorrelationID>${corId}</CorrelationID><CustomStatus>${status}</CustomStatus></ErrorDetails></Error>"
+		return format.equalsIgnoreCase("json") ? json : xml
+	}
 
     /**
      * Retrieves the status code based on the error details.

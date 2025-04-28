@@ -219,13 +219,18 @@ class Framework_Validator {
 
     // Static inner class for the custom exception
     public static class SchemaValidationException extends RuntimeException {
-
+        String reason
         SchemaValidationException(String message) {
             super(message)
+            this.reason = Constants.ILCD.Validator.EXC_CAUSE
         }
-
+        SchemaValidationException(String message, String reason) {
+            super(message)
+            this.reason = reason
+        }
         Throwable getCause() {
             return new Throwable(Constants.ILCD.Validator.EXC_CAUSE)
         }
+        String getReason() { return this.reason }
     }
 }

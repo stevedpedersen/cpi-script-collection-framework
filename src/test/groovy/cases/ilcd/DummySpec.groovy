@@ -1,4 +1,4 @@
-package groovy.cases.ilcd
+package cases.ilcd
 import spock.lang.Specification
 
 class DummySpec extends Specification {

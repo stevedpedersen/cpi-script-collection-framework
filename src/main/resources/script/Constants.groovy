@@ -79,10 +79,13 @@ class Constants {
             normalizeLogLevel(level, "INFO")
         }
         static String normalizeLogLevel(def level, def defaultLogLevel) {
-            if (level instanceof List && level.size() > 0) {
-                level = level[0]
+            if (level == null || (level instanceof String && level.trim() == "") || (level instanceof List && level.size() == 0)) {
+                return defaultLogLevel ?: "INFO"
             }
-            switch (level?.toUpperCase()) {
+            if (level instanceof List) { level = level[0] }
+            if (!(level instanceof String)) { level = level.toString() }
+            level = level.trim().toUpperCase()
+            switch (level) {
                 case ["E", "ERROR"]: return "ERROR"
                 case ["W", "WARN"]: return "WARN"
                 case ["I", "INFO", "S", "SUCCESS"]: return "INFO"
@@ -174,7 +177,27 @@ class Constants {
         // Constants.ILCD.ValueMaps
         static class ValueMaps {
             static final String VM_KEY_APIS_ENABLED = "setting_apiServicesEnabled"
+            static final String EXC_CLASS = "FrameworkMetadataException"
         }
+        // Constants.ILCD.Cache
+        static class Cache {
+            static final String DATASTORE = "DS_Cache_VMStats"
+            static final String SPARAM_DS_STATS = "cache_stats_datastore_enabled"
+            static final String SPARAM_TTL = "cache_ttl_seconds"
+            static final String SPARAM_IS_DISABLED = "cache_disabled"
+        }
+    }
+
+    // Constants.SoftError - Soft Error Constants
+    static class SoftError {
+        static final String EXC_CLASS = "SoftErrorException"
+        static final String EMPTY_XML_ROOT = "EMPTY_XML_ROOT"
+        static final String XML_ERROR_NODE = "XML_ERROR_NODE"
+        static final String XML_STATUS_FAILED = "XML_STATUS_FAILED"
+        static final String EMPTY_BODY = "EMPTY_BODY"
+        static final String PROP_IS_SOFT_ERROR = "isSoftError"
+        static final String PROP_SOFT_ERROR_REASON = "softErrorReason"
+        static final String PROP_SOFT_ERROR_MESSAGE = "softErrorMessage"
     }
 
     // Constants.Style - J&J Corporate Branding Styles 
