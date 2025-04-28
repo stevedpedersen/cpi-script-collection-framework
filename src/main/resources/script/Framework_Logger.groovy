@@ -122,7 +122,6 @@ class Framework_Logger {
             this.message.setProperty("logLevel", "") // @deprecated - use dedicated scripts instead
             this.message.setProperty("text", "")
         } finally {
-            debug("logMessage.finally{}", "Checking for payload logging...", this.messageLog)
             checkForPayloadLogging(tracePoint, projectName, integrationID)
         }
     }

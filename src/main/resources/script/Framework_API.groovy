@@ -16,14 +16,15 @@ import java.security.KeyPair
 class Framework_API {
     
     /**
-     * Stores a value in the DataStore.
+     * Stores a value in the DataStore with optional expiry (in days).
      * @param storeName DataStore name
      * @param entryId   Entry key
      * @param value     Value to store
      * @param overwrite Overwrite if exists (default: true)
+     * @param expiryDays Expiry in days (default: 2)
      * @return true if successful, false or error map otherwise
      */
-    static boolean datastorePut(String storeName, String entryId, String value, boolean overwrite = true) {
+    static boolean datastorePut(String storeName, String entryId, String value, boolean overwrite = true, int expiryDays = 2) {
         try {
             def service = new Factory(DataStoreService.class).getService()
             if (service != null) {
@@ -33,6 +34,7 @@ class Framework_API {
                 dConfig.setStoreName(storeName)
                 dConfig.setId(entryId)
                 dConfig.setOverwrite(overwrite)
+                dConfig.setExpires(expiryDays)
                 service.put(dBean, dConfig)
                 return true
             }
@@ -59,6 +61,89 @@ class Framework_API {
             }
         } catch (Exception e) {
             return [error: "Error retrieving DataStore entry $entryId from $storeName - ${e.message}"]
+        }
+        return null
+    }
+
+
+    /**
+     * Checks if a DataStore entry exists.
+     * @param storeName DataStore name
+     * @param entryId   Entry key
+     * @return true if entry exists, false otherwise
+     */
+    static boolean datastoreExists(String storeName, String entryId) {
+        try {
+            def service = new Factory(DataStoreService.class).getService()
+            if (service != null) {
+                def meta = service.getMeta(storeName, entryId)
+                return meta != null
+            }
+        } catch (Exception e) {
+            // ignore or log
+        }
+        return false
+    }
+
+    /**
+     * Deletes a DataStore entry.
+     * @param storeName DataStore name
+     * @param entryId   Entry key
+     * @return true if deleted, false otherwise
+     */
+    static boolean datastoreDelete(String storeName, String entryId) {
+        try {
+            def service = new Factory(DataStoreService.class).getService()
+            if (service != null) {
+                service.delete(storeName, entryId)
+                return true
+            }
+        } catch (Exception e) {
+            // ignore or log
+        }
+        return false
+    }
+
+    /**
+     * Gets metadata for a DataStore entry.
+     * @param storeName DataStore name
+     * @param entryId   Entry key
+     * @return Map with metadata or error
+     */
+    static Object datastoreGetMeta(String storeName, String entryId) {
+        try {
+            def service = new Factory(DataStoreService.class).getService()
+            if (service != null) {
+                def meta = service.getMeta(storeName, entryId)
+                if (meta != null) {
+                    return [
+                        id: meta.getId(),
+                        creationTime: meta.getCreationTime(),
+                        expiryTime: meta.getExpiryTime(),
+                        size: meta.getSize()
+                    ]
+                }
+            }
+        } catch (Exception e) {
+            return [error: "Error retrieving metadata for $entryId in $storeName - ${e.message}"]
+        }
+        return null
+    }
+
+    /**
+     * Lists all entry IDs in a DataStore.
+     * @param storeName DataStore name
+     * @return List of entry IDs or error
+     */
+    static Object datastoreListIds(String storeName) {
+        try {
+            def service = new Factory(DataStoreService.class).getService()
+            if (service != null) {
+                def ids = service.getAllIds(storeName)
+                return ids as List
+            }
+        } catch (Exception e) {
+            return [error: "Error listing IDs in $storeName - ${e.message}"]
         }
         return null
     }

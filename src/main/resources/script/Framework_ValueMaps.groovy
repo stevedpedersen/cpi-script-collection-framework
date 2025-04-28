@@ -182,7 +182,7 @@ class Framework_ValueMaps {
             def typeCount = 0
 
             if (enableSavingCacheStatsToDatastore) {
-                def dsEntryId = new Date().format("yyyyMMddHH")
+                def dsEntryId = new Date().format("yyyyMMdd")
                 def statsJson = Framework_API.datastoreGet(Constants.ILCD.Cache.DATASTORE, dsEntryId)
                 def stats
                 if (!statsJson) {
@@ -203,7 +203,7 @@ class Framework_ValueMaps {
                     typeCount = stats.misses
                 }
                 stats.entries[interfaceKey][entryKey] = formatUtcTimestamp(expiry) ?: expiry
-                Framework_API.datastorePut(Constants.ILCD.Cache.DATASTORE, dsEntryId, JsonOutput.toJson(stats), true)
+                Framework_API.datastorePut(Constants.ILCD.Cache.DATASTORE, dsEntryId, JsonOutput.toJson(stats), true, 2)
                 message.setProperty("cache_${type}_count", (type == "hit" ? "${stats.hits}" : "${stats.misses}"))
             } else {
                 def prop = type == "hit" ? "cache_hit_count" : "cache_miss_count"
