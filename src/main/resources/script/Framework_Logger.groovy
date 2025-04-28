@@ -415,7 +415,7 @@ class Framework_Logger {
         def normalizedCount = this.logCounter ?: currentIndex
         def isActiveLoopOverLimit = isLoopScope && normalizedCount >= totalSplits
 
-        def payloadLogPoints = ["PAYLOAD"].any { label?.toUpperCase()?.contains(it) }
+        def payloadLogPoints = ["MESSAGE"].any { label?.toUpperCase()?.contains(it) }
         def endTypes = ["END", "SUMMARY"].any { tracePoint?.toUpperCase()?.contains(it) || label?.toUpperCase()?.contains(it) }
         def traceTypes = ["TRACE", "DEBUG"].any { tracePoint?.toUpperCase()?.contains(it) || label?.toUpperCase()?.contains(it) }
         def traceDebugLevel = ["TRACE", "DEBUG"].contains(this.overallLogLevel?.toUpperCase())
@@ -424,7 +424,7 @@ class Framework_Logger {
             (props.get(Constants.Property.CAMEL_EXC_CAUGHT) != null) || toBool(props.get(Constants.ILCD.PROP_ILCD_EXC_IN_PROGRESS))
 
         // DEBUG: Print all relevant state for troubleshooting
-        if(tracePoint?.toUpperCase() == "END" && label?.toUpperCase()?.contains("PAYLOAD")) {
+        if(tracePoint?.toUpperCase() == "END" && label?.toUpperCase()?.contains("MESSAGE")) {
             def debugMsg = "isAttachable debug: tracePoint=${tracePoint}, label=${label}, payloadLogPoints=${payloadLogPoints}, isLoopScope=${isLoopScope}, normalizedCount=${normalizedCount}, totalSplits=${totalSplits}, isActiveLoopOverLimit=${isActiveLoopOverLimit}, attachmentsDisabled=${toBool(settings.attachmentsDisabled)}, hardLimit=${normalizedCount >= GLOBAL_HARD_LIMIT}, labelFullLog=${label?.contains('FULL_LOG')}, isError=${isError}, endTypes=${endTypes}, isRetry=${isRetry}, splitComplete=${splitComplete}"
             debug("isAttachable_debug_log", debugMsg, this.messageLog)
         }
@@ -556,7 +556,7 @@ class Framework_Logger {
         message.setProperty(Constants.ILCD.PROP_ILCD_EXC_IN_PROGRESS, true)
         
         def logLevel = message.getProperty(Constants.Property.MPL_LEVEL_OVERALL)
-        def serverTraceLogsOrEMpty = logLevel == "TRACE" ? ["Server Trace Log Tail": Framework_ExceptionHandler.getServerTraceTail(75)] : [] 
+        def serverTraceLogsOrEmpty = logLevel == "TRACE" ? ["Server Trace Log Tail": Framework_ExceptionHandler.getServerTraceTail(100)] : [] 
         def errorLabel = "${Constants.ILCD.EXC_PREFIX}-${function}"
         def errorMessage = new StringBuilder()
         def errorMap = [
@@ -565,7 +565,7 @@ class Framework_Logger {
             "Cause": e.cause ?: "Unknown",
             "Details": customData ?: "N/A",
             "Stack Trace": !printStackTrace ? "N/A" : ("\n" + Framework_ExceptionHandler.getStackTrace(e))
-        ] + serverTraceLogsOrEMpty
+        ] + serverTraceLogsOrEmpty
 
         // Include Exception Info, Properties, Headers
         appendProperties(errorMessage, "EXCEPTION SUMMARY", errorMap)
@@ -660,10 +660,10 @@ class Framework_Logger {
                         return false
                     }
                 }
-                attachBodyWithLabel(payload.toString(), "PAYLOAD_${tracePoint}", "Attempted to log payload...", false)
+                attachBodyWithLabel(payload.toString(), "MESSAGE_${tracePoint}", "Attempted to log payload...", false)
             } catch (Exception e) {
                 try { // try one more time
-                    attachBodyWithLabel(this.message.getBody(String.class), "PAYLOAD_${tracePoint}",  "Attempted to log payload again...", false)
+                    attachBodyWithLabel(this.message.getBody(String.class), "MESSAGE_${tracePoint}",  "Attempted to log payload again...", false)
                 } catch (Exception ignored) {
                     this.messageLog.setStringProperty("PAYLOAD_LOG_FAILED", "Failed to attach full payload. ${e.message}")
                 }

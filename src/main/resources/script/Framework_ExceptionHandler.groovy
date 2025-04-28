@@ -220,6 +220,14 @@ class Framework_ExceptionHandler {
         return null
     }
 
+    // Defensive overload: handle non-Throwable ex
+    static Throwable findCauseByClass(Object ex, List<String> targetClassNames) {
+        if (ex instanceof Throwable) {
+            return findCauseByClass((Throwable) ex, targetClassNames)
+        }
+        return null
+    }
+
     // Utility: Find a cause in the exception chain matching any class name in the list
     static Throwable findCause(Throwable ex, List<String> classNames) {
         while (ex != null) {

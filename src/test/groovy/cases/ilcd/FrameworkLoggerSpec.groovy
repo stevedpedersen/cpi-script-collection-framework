@@ -153,7 +153,7 @@ class FrameworkLoggerSpec extends Specification {
 
     def "Attachment allowed for payload log point"() {
         expect:
-        makeLogger([logCounter: 2]).isAttachable("INFO", "PAYLOAD_LOG")
+        makeLogger([logCounter: 2]).isAttachable("INFO", "MESSAGE_LOG")
     }
 
     def "Attachment allowed for error even if tracePoint is not ERROR but error property set"() {
@@ -163,27 +163,27 @@ class FrameworkLoggerSpec extends Specification {
         logger.isAttachable("END", "END_LOG")
     }
 
-    def "PAYLOAD_END label with END tracePoint should be attachable if not in loop over limit"() {
+    def "MESSAGE_END label with END tracePoint should be attachable if not in loop over limit"() {
         def logger = makeLogger([tracePoint: "END", logCounter: 1])
         expect:
-        logger.isAttachable("END", "PAYLOAD_END")
+        logger.isAttachable("END", "MESSAGE_END")
     }
 
     // --- Additional isAttachable edge case tests ---
     def "Attachment not allowed if attachmentsDisabled is true, even for payload point"() {
         def logger = makeLogger([attachmentsDisabled: true, tracePoint: "END", logCounter: 1])
         expect:
-        !logger.isAttachable("END", "PAYLOAD_END")
+        !logger.isAttachable("END", "MESSAGE_END")
     }
     def "Attachment not allowed if over hard limit, even for payload point"() {
         def logger = makeLogger([tracePoint: "END", logCounter: 8])
         expect:
-        !logger.isAttachable("END", "PAYLOAD_END")
+        !logger.isAttachable("END", "MESSAGE_END")
     }
     def "Attachment not allowed if label contains FULL_LOG, even for payload point"() {
         def logger = makeLogger([tracePoint: "END", logCounter: 1])
         expect:
-        !logger.isAttachable("END", "PAYLOAD_FULL_LOG")
+        !logger.isAttachable("END", "MESSAGE_FULL_LOG")
     }
     def "Payload point not attachable if in active loop over limit"() {
         def logger = makeLogger([tracePoint: "END", logCounter: 8])
@@ -192,7 +192,7 @@ class FrameworkLoggerSpec extends Specification {
         logger.message.properties[Constants.Property.CAMEL_SPLIT_INDEX] = 8
         logger.message.properties[Constants.Property.CAMEL_SPLIT_SIZE] = 8
         expect:
-        !logger.isAttachable("END", "PAYLOAD_END")
+        !logger.isAttachable("END", "MESSAGE_END")
     }
     def "Payload point not attachable if not last split iteration (split complete false)"() {
         def logger = makeLogger([tracePoint: "END", logCounter: 8])
@@ -200,7 +200,7 @@ class FrameworkLoggerSpec extends Specification {
         logger.message.properties[Constants.Property.CAMEL_SPLIT_INDEX] = 8
         logger.message.properties[Constants.Property.CAMEL_SPLIT_SIZE] = 8
         expect:
-        !logger.isAttachable("END", "PAYLOAD_END")
+        !logger.isAttachable("END", "MESSAGE_END")
     }
     def "Payload point attachable if last split iteration and logCounter < totalSplits"() {
         def logger = makeLogger([tracePoint: "END", logCounter: 7])
@@ -208,7 +208,7 @@ class FrameworkLoggerSpec extends Specification {
         logger.message.properties[Constants.Property.CAMEL_SPLIT_INDEX] = 8
         logger.message.properties[Constants.Property.CAMEL_SPLIT_SIZE] = 8
         expect:
-        logger.isAttachable("END", "PAYLOAD_END")
+        logger.isAttachable("END", "MESSAGE_END")
     }
 
     // --- Other unrelated tests (unchanged) ---
