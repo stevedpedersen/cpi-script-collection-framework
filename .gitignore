@@ -3,7 +3,12 @@
 .gradle
 **/build/
 !src/**/build/
-
+.gradle
+gradlew
+gradlew.bat
+gradle
+.env*
+.bak
 # Ignore Gradle GUI config
 gradle-app.setting
 
