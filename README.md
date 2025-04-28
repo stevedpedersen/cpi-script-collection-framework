@@ -31,6 +31,8 @@ The script collection provides a standardized approach to logging, error handlin
 - **Framework_API:** New class for SDK/non-standard API abstraction (e.g., DataStore, SecureStore).
 - **Expanded Constants:** Greater use of constants throughout the collection.
 - **Static Value Map Caching:** 5-minute TTL, drastically reducing Value Map API calls per iFlow transaction.
+- **Global Value Map Updates:** 
+  - `setting_defaultDlIncludeFields`: 
 
 #### Soft Error Detection
 

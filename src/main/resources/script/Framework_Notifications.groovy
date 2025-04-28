@@ -27,10 +27,10 @@ class Framework_Notifications {
         def integrationID = properties.getOrDefault("integrationID", jsonObject?.integrationID) ?: ""
         def meta_environment = Framework_ValueMaps.frameworkVM("meta_environment", System.getenv("TENANT_NAME"), message, messageLog)
         def meta_integrationName = interfaceVM("meta_integrationName", projectName, integrationID, integrationID)
-        def recipientResult = resolveEmailRecipients(jsonObject, projectName, integrationID)
-        message.setProperty("emailRecipients", recipientResult.emailRecipients)
+        def results = resolveEmailRecipients(jsonObject, projectName, integrationID)
+
         // We can set the errorType in the subject after resolving the email recipients
-        String emailSubject = "BTP CI - ${meta_environment} - ${meta_integrationName} [${recipientResult.errorType} ERROR]"
+        String emailSubject = "BTP CI - ${meta_environment} - ${meta_integrationName} [${results.errorType} ERROR]"
         message.setProperty("emailSubject", emailSubject)
 
         // Generate an HTML table row containing a link to the MPL/cALM dashboard for this message
@@ -71,16 +71,54 @@ class Framework_Notifications {
     }
 
     /**
-     * Resolves the correct email recipients based on errorType (functional/technical) with fallback.
+     * Checks the JSON log for error_type at root level or errorType within an error log entry.
      */
-    private Map resolveEmailRecipients(def jsonObject, String projectName, String integrationID) {
+    private String resolveErrorType(def jsonObject, String projectName, String integrationID) {
         def errTypeFallback = Constants.ILCD.ExceptionHandler.VM_KEY_EMAIL_RECIP_TECH
         def errTypeProp = this.message ? this.message.getProperty(Constants.ILCD.ExceptionHandler.ERR_TYPE_PROPERTY) : null
         def errTypeJson = jsonObject?.errorType ? jsonObject.errorType.toString()?.toUpperCase() : jsonObject[Constants.ILCD.ExceptionHandler.MPL_CH_ERR_TYPE]
         def errTypeJsonMsgs = (jsonObject?.messages ?: []).findResult(errTypeFallback, { it?.errorType })
         def errorType = errTypeProp ?: errTypeJson ?: errTypeJsonMsgs ?: errTypeFallback
-        def normalizedType = Constants.ILCD.ExceptionHandler.normalizeErrorType(errorType)
+        return Constants.ILCD.ExceptionHandler.normalizeErrorType(errorType)
+    }
+
+    /**
+     * Resolves the final email recipients using error type preference and additionally configured DL fallback,
+     * also removes placeholders from being considered as recipients.
+     */
+    private Map resolveEmailRecipients(def jsonObject, String projectName, String integrationID) {
+        def defaultDl = frameworkVM(Constants.ILCD.ValueMaps.VM_KEY_EMAIL_DL_ADDR, "")
+        def defaultDlFields = frameworkVM(Constants.ILCD.ValueMaps.VM_KEY_EMAIL_DL_FIELDS, "Cc")
+        def result = getRecipientsForErrorType(jsonObject, projectName, integrationID)
+        def dlFields = defaultDl && defaultDlFields ? defaultDlFields.split(",")?.toList() : []
         
+        // Ensure there aren't placeholder values (caused by the CSV Template placeholder values)
+        def emailTo = result.emailRecipients.split(/[;,]/)
+            .collect { it.trim().toLowerCase() }   // normalize case
+            .findAll { it && !["user1@its.jnj.com", "user2@its.jnj.com"].contains(it) }
+        
+        // Add DL to recipients or CC if configured
+        if (dlFields.contains("To")) {
+            emailTo << defaultDl
+        } else if (dlFields.contains("Cc")) {
+            this.message.setHeader("Cc", defaultDl)
+            debug("email_Cc", defaultDl, messageLog)
+        }
+
+        def verifiedRecipients = emailTo && emailTo.size() > 0 && emailTo.unique() ? emailTo.unique() : []
+        def emailRecipients = verifiedRecipients.join(";").trim() ?: ""
+        debug("email_To", emailRecipients, messageLog)
+        this.message.setProperty("emailRecipients", emailRecipients)
+        this.message.setProperty("hasRecipients", !emailRecipients.isEmpty())
+        
+        return [emailRecipients: emailRecipients, errorType: result.errorType]
+    }
+
+    /**
+     * Does a lookup for email recipients based on errorType (functional/technical) with fallback.
+     */
+    private Map getRecipientsForErrorType(def jsonObject, String projectName, String integrationID) {
+        def normalizedType = resolveErrorType(jsonObject, projectName, integrationID)
         def recipientKey = (normalizedType == Constants.ILCD.ExceptionHandler.ERR_TYPE_FUNC)
             ? Constants.ILCD.ExceptionHandler.VM_KEY_EMAIL_RECIP_FUNC
             : Constants.ILCD.ExceptionHandler.VM_KEY_EMAIL_RECIP_TECH
@@ -89,26 +127,18 @@ class Framework_Notifications {
         if (!emailRecipients?.trim() && normalizedType == Constants.ILCD.ExceptionHandler.ERR_TYPE_FUNC) {
             emailRecipients = interfaceVM(Constants.ILCD.ExceptionHandler.VM_KEY_EMAIL_RECIP_TECH, projectName, integrationID, "")
             message.setProperty("missingFunctionalRecipients", "true")
-            if (messageLog) {
-                messageLog.addCustomHeaderProperty(
-                    "missing_functionalEmailRecipients",
-                    "Missing Value Map key 'functionalEmailRecipients' for errorType 'FUNCTIONAL'. Used fallback.")
-            }
+            debug("missing_functionalEmailRecipients", "Missing Value Map key 'functionalEmailRecipients' for errorType 'FUNCTIONAL'. Used fallback.", messageLog)
         }
         // Final fallback if still missing
         if (!emailRecipients?.trim()) {
             emailRecipients = ""
             message.setProperty("missingAllRecipients", "true")
-            if (messageLog) {
-                messageLog.addCustomHeaderProperty("missing_allEmailRecipients",
-                    "No Value Map key found for either functional or technical recipients. Email will not be sent.")
-            }
+            debug("missing_allEmailRecipients", "No Value Map key found for either functional or technical recipients. Email will not be sent.", messageLog)
+        } else {
+            debug("resolved_emailRecipients", "Used key: ${recipientKey}, value: ${emailRecipients ?: '[empty]'}", messageLog)
         }
-        if (messageLog) {
-            messageLog.addCustomHeaderProperty("resolved_emailRecipients", 
-            "Used key: ${recipientKey}, value: ${emailRecipients ?: '[empty]'}")
-        }
-        return [emailRecipients: emailRecipients, errorType: normalizedType]
+
+        return [emailRecipients: (emailRecipients ?: ""), errorType: normalizedType]
     }
 
     /**
@@ -175,7 +205,16 @@ class Framework_Notifications {
         return mpl + cALM;
     }
 
-    def interfaceVM(String key, String projectName, String integrationID, def defaultValue = "") {
+    private String interfaceVM(String key, String projectName, String integrationID, def defaultValue = "") {
         return Framework_ValueMaps.interfaceVM(key, projectName, integrationID, defaultValue, message, messageLog)
+    }
+
+    private String frameworkVM(String key, String defaultValue = null) {
+        return Framework_ValueMaps.frameworkVM(key, defaultValue, message, messageLog)
+    }
+
+    static void debug(key, value, log) {
+        if (!log || !key || !value) return
+        log.setStringProperty("${key}", "${value}")
     }
 }

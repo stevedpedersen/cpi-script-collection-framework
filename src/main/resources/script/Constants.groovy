@@ -177,6 +177,8 @@ class Constants {
         // Constants.ILCD.ValueMaps
         static class ValueMaps {
             static final String VM_KEY_APIS_ENABLED = "setting_apiServicesEnabled"
+            static final String VM_KEY_EMAIL_DL_FIELDS = "setting_defaultDlIncludeFields"
+            static final String VM_KEY_EMAIL_DL_ADDR = "emailRecipients"
             static final String EXC_CLASS = "FrameworkMetadataException"
         }
         // Constants.ILCD.Cache
