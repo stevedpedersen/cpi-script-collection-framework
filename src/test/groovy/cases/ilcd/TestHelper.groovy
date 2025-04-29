@@ -27,6 +27,19 @@ class TestHelper {
         println "DEBUG: (makeSAPMessage) body after setBody: ${msg.getBody(String)}"
         (opts.headers ?: sampleHeaders).each { k, v -> msg.setHeader(k, v) }
         (opts.properties ?: sampleProperties).each { k, v -> msg.setProperty(k, v) }
+        // Create and wire up the MessageLog and Factory
+        def messageLog = new com.sap.it.api.msglog.MessageLog()
+        def messageLogFactory = new com.sap.it.api.msglog.MessageLogFactory()
+        // Use metaClass to ensure getMessageLog(msg) returns the right instance
+        messageLogFactory.metaClass.getMessageLog = { m -> m.is(msg) ? messageLog : null }
+        // Optionally, inject into Binding if needed
+        def binding = new Binding()
+        binding.setVariable('messageLogFactory', messageLogFactory)
+        binding.setVariable('messageLog', messageLog)
+        // Optionally, store on the message for easy access in tests
+        msg.messageLog = messageLog
+        msg.messageLogFactory = messageLogFactory
+        msg.binding = binding
         return msg
     }
     static def makeErrorSAPMessage(Map opts = [:]) {
@@ -51,6 +64,19 @@ class TestHelper {
         msg.setBody(body)
         (opts.headers ?: sampleHeaders).each { k, v -> msg.setHeader(k, v) }
         (opts.properties ?: sampleProperties).each { k, v -> msg.setProperty(k, v) }
+        // Create and wire up the MessageLog and Factory
+        def messageLog = new com.sap.it.api.msglog.MessageLog()
+        def messageLogFactory = new com.sap.it.api.msglog.MessageLogFactory()
+        // Use metaClass to ensure getMessageLog(msg) returns the right instance
+        messageLogFactory.metaClass.getMessageLog = { m -> m.is(msg) ? messageLog : null }
+        // Optionally, inject into Binding if needed
+        def binding = new Binding()
+        binding.setVariable('messageLogFactory', messageLogFactory)
+        binding.setVariable('messageLog', messageLog)
+        // Optionally, store on the message for easy access in tests
+        msg.messageLog = messageLog
+        msg.messageLogFactory = messageLogFactory
+        msg.binding = binding
         return msg
     }
     // TODO: Add more helpers/mocks as needed

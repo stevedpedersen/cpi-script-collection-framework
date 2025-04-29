@@ -98,11 +98,10 @@ class Constants {
         static class ExceptionHandler {
             static final String ERR_MSG_KEY     = "message"
             static final String ERR_KEY_PROP    = "errorMessageKeyName"
-            static final String ERR_TYPE_PROPERTY = "errorType"
             static final String ERR_TYPE_FUNC = "FUNCTIONAL"
             static final String ERR_TYPE_TECH = "TECHNICAL"
             static final Set<String> ERR_TYPE_FUNC_ALTS = [
-                "F", "FUNC", "FUNCTIONAL"
+                "F", "FUNC", "FUNCTIONAL", "BUSINESS", "B", "BUS"
             ] as Set
             static final Set<String> ERR_TYPE_TECH_ALTS = [
                 "T", "TECH", "TECHNICAL"
@@ -122,15 +121,26 @@ class Constants {
             static final String PROP_ERR_EXC_CLASS = "errorExceptionClass"
             static final String PROP_ERR_TYPE = "errorType"
             static final String PROP_META_ATTR_ERR_TYPE = "meta_attribute_${MPL_CH_ERR_TYPE}"
+            // This is used to specify the different properties we know of that are used to classify errors
+            static final Set<String> PROP_ERR_TYPE_ALTS = [
+                "errorType", "meta_attribute_ErrorClassification", "meta_attribute_alertClassificationType"
+            ] as Set
+            static String resolveErrorTypeProperty(Map props) {
+                def found = props.find { key, value -> PROP_ERR_TYPE_ALTS.contains(key) && value }
+                if (!found) return null
+                def key = props.find { k, v -> PROP_ERR_TYPE_ALTS.contains(k) && v }?.key
+                def value = key ? props[key] : found
+                return normalizeErrorType(value?.toString()?.trim(), true)
+            }
 
-            static String normalizeErrorType(def input) {
-                if (!input) return ERR_TYPE_TECH
+            static String normalizeErrorType(def input, boolean isStrict = false) {
+                if (!input && isStrict) return null
                 def val = input.toString().trim().toUpperCase()
-
                 if (ERR_TYPE_FUNC_ALTS.contains(val)) return ERR_TYPE_FUNC
                 if (ERR_TYPE_TECH_ALTS.contains(val)) return ERR_TYPE_TECH
                 return ERR_TYPE_TECH // fallback
             }
+
             static final Map<String,String> ADAPTER_EXC_CLASSES = [
                 "HTTP": [
                     "org.apache.camel.component.ahc.AhcOperationFailedException": "handleHttpAdapterException"

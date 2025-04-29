@@ -78,15 +78,21 @@ class Framework_ExceptionHandler {
     private void setErrorProperties() {
         this.error.hasRetry = toBool(this.message.getProperty(Constants.Property.SAP_IS_REDELIVERY_ENABLED))
         this.error.headers = this.message.getHeaders()
-        this.error.type = Constants.ILCD.ExceptionHandler.normalizeErrorType(
-            this.message.getProperty(Constants.ILCD.ExceptionHandler.ERR_TYPE_PROPERTY))
-
+        
+        def errorType = Constants.ILCD.ExceptionHandler.resolveErrorTypeProperty(this.message.getProperties())
         def ex = this.message.getProperty(Constants.Property.CAMEL_EXC_CAUGHT)
         def customEx = ex ? findCauseByClass(ex, [Constants.ILCD.Validator.EXC_CLASS, Constants.SoftError.EXC_CLASS]) : null
+        this.error.type = errorType ?: (customEx ? Constants.ILCD.ExceptionHandler.ERR_TYPE_FUNC : null)
 
-        this.error.exceptionMessage = ex ? (ex.getMessage() ?: "Internal Server Error") : "Internal Server Error"
-        this.error.className = ex ? (ex.getClass()?.getCanonicalName() ?: "RuntimeException") : "RuntimeException"
-        this.error.message = this.error.exceptionMessage ?: (ex ? ex.getCause() : null)
+        if (ex instanceof Throwable) {
+            this.error.exceptionMessage = ex.getMessage() ?: "Internal Server Error"
+            this.error.className = ex.class?.canonicalName ?: "RuntimeException"
+            this.error.message = this.error.exceptionMessage
+        } else {
+            this.error.exceptionMessage = "Internal Server Error"
+            this.error.className = "RuntimeException"
+            this.error.message = ex?.toString() ?: "Internal Server Error"
+        }
 
         // Override base info for custom exception types
         if (customEx != null) {
@@ -130,7 +136,7 @@ class Framework_ExceptionHandler {
         this.message.setProperty(Constants.ILCD.ExceptionHandler.PROP_ERR_EXC_MSG, this.error.exceptionMessage)
         this.message.setProperty(Constants.ILCD.ExceptionHandler.PROP_ERR_EXC_CLASS, this.error.className)
         this.message.setProperty(Constants.ILCD.ExceptionHandler.PROP_ERR_TYPE, this.error.type)
-        this.message.setProperty(Constants.ILCD.ExceptionHandler.PROP_META_ATTR_ERR_TYPE, this.error.type)
+        // this.message.setProperty(Constants.ILCD.ExceptionHandler.PROP_META_ATTR_ERR_TYPE, this.error.type)
     }
     
     private void handleHttpAdapterException(Exception ex) {
@@ -305,7 +311,7 @@ class Framework_ExceptionHandler {
         ])
     }
 
-    def escapeAmpersands(String xml) {
+    public static String escapeAmpersands(String xml) {
         xml.replaceAll(/&(?!amp;|lt;|gt;|apos;|quot;|#\d+;|#x[a-fA-F0-9]+;)/, '&amp;')
     }
 
@@ -327,48 +333,51 @@ class Framework_ExceptionHandler {
             // Already handled, skip further checks
             return [softError: false, isPropagated: true]
         }
-        def ex = getInternalExceptionType(message)
-        if (ex != null) {
+        def customEx = getInternalExceptionType(message)
+        if (customEx != null) {
             message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, true)
             message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, Constants.SoftError.EMPTY_BODY)
             message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, "Body is empty")
-            return [softError: true, reason: ex?.reason, message: ex.message, isPropagated: false]
+            return [softError: true, reason: customEx?.reason, message: customEx.message, isPropagated: false]
         }
-        def body = message.getBody(String)
-        if (!body || body.trim().isEmpty()) {
-            message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, true)
-            message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, Constants.SoftError.EMPTY_BODY)
-            message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, "Body is empty")
-            return [softError: true, reason: Constants.SoftError.EMPTY_BODY, message: "Body is empty", isPropagated: true]
-        }
-        if (body.startsWith('<')) {
-            try {
-                def parser = new XmlSlurper(false, false)
-                parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
-                def safeBody = escapeAmpersands(body)
-                def parsed = parser.parseText(safeBody)
-                if (wrapperNodeName) {
-                    def encodedXml = parsed.'**'.find { it.name() == wrapperNodeName }?.text()
-                    if (encodedXml && encodedXml.trim()) {
-                        def decodedXml = encodedXml.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&')
-                        parsed = parser.parseText(decodedXml)
+        def ex = message.getProperty(Constants.Property.CAMEL_EXC_CAUGHT)
+        if (ex == null) {
+            def body = message.getBody(String)
+            if (!body || body.trim().isEmpty()) {
+                message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, true)
+                message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, Constants.SoftError.EMPTY_BODY)
+                message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, "Body is empty")
+                return [softError: true, reason: Constants.SoftError.EMPTY_BODY, message: "Body is empty", isPropagated: true]
+            }
+            if (body.startsWith('<')) {
+                try {
+                    def parser = new XmlSlurper(false, false)
+                    parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
+                    def safeBody = escapeAmpersands(body)
+                    def parsed = parser.parseText(safeBody)
+                    if (wrapperNodeName) {
+                        def encodedXml = parsed.'**'.find { it.name() == wrapperNodeName }?.text()
+                        if (encodedXml && encodedXml.trim()) {
+                            def decodedXml = encodedXml.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&')
+                            parsed = parser.parseText(decodedXml)
+                        }
                     }
-                }
-                predicates = predicates ?: getDefaultXmlPredicates()
-                for (p in predicates) {
-                    def result = p.predicate(parsed)
-                    if (result?.matched) {
-                        // Set soft error properties for iFlow use
-                        message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, true)
-                        message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, p.reason)
-                        message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, result.message)
-                        return [softError: true, reason: p.reason, message: result.message, isPropagated: false]
+                    predicates = predicates ?: getDefaultXmlPredicates()
+                    for (p in predicates) {
+                        def result = p.predicate(parsed)
+                        if (result?.matched) {
+                            // Set soft error properties for iFlow use
+                            message.setProperty(Constants.SoftError.PROP_IS_SOFT_ERROR, true)
+                            message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_REASON, p.reason)
+                            message.setProperty(Constants.SoftError.PROP_SOFT_ERROR_MESSAGE, result.message)
+                            return [softError: true, reason: p.reason, message: result.message, isPropagated: false]
+                        }
                     }
+                } catch (Exception e) {
+                    message.setProperty("isPayloadInvalid", "true")
+                    message.setProperty("payloadParseError", e.message)
+                    // Continue, so the flow can handle the technical error elsewhere
                 }
-            } catch (Exception e) {
-                message.setProperty("isPayloadInvalid", "true")
-                message.setProperty("payloadParseError", e.message)
-                // Continue, so the flow can handle the technical error elsewhere
             }
         }
         // Clear soft error properties if no soft error found

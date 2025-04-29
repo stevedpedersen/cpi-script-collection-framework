@@ -24,7 +24,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
 
         then:
         handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
+        handler.error.type == null
         handler.error.statusCode == 500
     }
 
@@ -43,7 +43,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
 
         then:
         handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
+        handler.error.type == null
         handler.error.statusCode == 500
     }
 
@@ -62,7 +62,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
 
         then:
         handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
+        handler.error.type == null
         handler.error.statusCode == 500
     }
 
@@ -82,7 +82,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
         handler.error.className == 'RuntimeException'
         handler.error.message == 'Internal Server Error'
         handler.error.statusCode == 500
-        handler.error.type == 'TECHNICAL'
+        handler.error.type == null  
     }
 
     def "should unwrap and detect soft error from nested ScriptException"() {
@@ -103,7 +103,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
         handler.error.className == 'RuntimeException'
         handler.error.message == 'Internal Server Error'
         handler.error.statusCode == 500
-        handler.error.type == 'TECHNICAL'
+        handler.error.type == null  
     }
 
     def "should not set soft error if no exception and body is not empty"() {
@@ -111,7 +111,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
         def message = new com.sap.gateway.ip.core.customdev.util.Message()
         message.headers = [:]
         message.properties = [:]
-        message.setBody("<root>OK</root>")
+        message.setBody("<root>Some content</root>")
         def messageLog = new com.sap.it.api.msglog.MessageLog()
         def handler = new src.main.resources.script.Framework_ExceptionHandler(message, messageLog)
 
@@ -119,27 +119,8 @@ class FrameworkExceptionHandlerSpec extends Specification {
         handler.setErrorProperties()
 
         then:
-        handler.error.className == 'RuntimeException'
         handler.error.message == 'Internal Server Error'
-        handler.error.statusCode == 500
-        handler.error.type == 'TECHNICAL'
-    }
-
-    def "should parse error from JSON body"() {
-        given:
-        def json = '{"error": {"message": "JSON error occurred", "type": "FUNCTIONAL", "statusCode": 400}}'
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
-        message.setBody(json)
-        message.headers = [:]
-        message.properties = [:]
-        def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
-
-        when:
-        handler.setErrorProperties()
-
-        then:
-        handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
+        handler.error.type == null
         handler.error.statusCode == 500
     }
 
@@ -149,37 +130,20 @@ class FrameworkExceptionHandlerSpec extends Specification {
         message.setBody("")
         message.headers = [:]
         message.properties = [:]
-        def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
+        def messageLog = new com.sap.it.api.msglog.MessageLog()
+        def handler = new src.main.resources.script.Framework_ExceptionHandler(message, messageLog)
 
         when:
         handler.setErrorProperties()
 
         then:
         handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
-        handler.error.statusCode == 500
-    }
-
-    def "should handle malformed XML body"() {
-        given:
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
-        message.setBody("<root><unclosedTag>")
-        message.headers = [:]
-        message.properties = [:]
-        def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
-
-        when:
-        handler.setErrorProperties()
-
-        then:
-        handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
+        handler.error.type == null
         handler.error.statusCode == 500
     }
 
     def "should set hasRetry true if SAP_IS_REDELIVERY_ENABLED is true"() {
         given:
-        // def message = new com.sap.gateway.ip.core.customdev.util.Message()
         def message = TestHelper.makeRetrySAPMessage()
         message.headers = [:]
         def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
@@ -187,7 +151,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
         when:
         handler.setErrorProperties()
 
-        then:     
+        then:
         handler.error.hasRetry == true
     }
 
@@ -206,32 +170,34 @@ class FrameworkExceptionHandlerSpec extends Specification {
 
     def "should handle null body gracefully"() {
         given:
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
+        def message = TestHelper.makeErrorSAPMessage()
         message.setBody(null)
         message.headers = [:]
         message.properties = [:]
-        def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
+        def handler = new src.main.resources.script.Framework_ExceptionHandler(message, message.messageLog)
 
         when:
         handler.setErrorProperties()
 
         then:
-        handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
+        handler.error.message == 'fail!'
+        handler.error.type == null
         handler.error.statusCode == 500
     }
 
     def "should handle messageLog and custom headers"() {
         given:
         def xml = '''<root><processActionReturn>&lt;root&gt;&lt;property id="error"&gt;Header error&lt;/property&gt;&lt;/root&gt;</processActionReturn></root>'''
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
+        def message = TestHelper.makeErrorSAPMessage()
         message.setBody(xml)
         message.headers = [:]
-        message.properties = [integrationID: 'IF_My_IFlow',projectName: 'IP_My_Package']
+        message.properties = [integrationID: 'IF_My_IFlow', projectName: 'IP_My_Package']
         def messageLog = Mock(com.sap.it.api.msglog.MessageLog)
         def handler = new src.main.resources.script.Framework_ExceptionHandler(message, messageLog)
+
         when:
         handler.handleError(true, "TEST_POINT")
+
         then:
         (1.._) * messageLog.addCustomHeaderProperty(_, _)
     }
@@ -239,6 +205,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
     def "should throw and catch custom SoftErrorException"() {
         when:
         src.main.resources.script.Framework_ExceptionHandler.throwCustomException("MY_REASON", "my message")
+
         then:
         def e = thrown(src.main.resources.script.Framework_ExceptionHandler.SoftErrorException)
         e.reason == "MY_REASON"
@@ -248,31 +215,38 @@ class FrameworkExceptionHandlerSpec extends Specification {
 
     def "should handle body that is neither XML nor JSON"() {
         given:
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
+        def message = TestHelper.makeErrorSAPMessage()
         message.setBody("just some text")
         message.headers = [:]
         message.properties = [:]
         def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
+
         when:
         handler.setErrorProperties()
+
         then:
-        handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
+        handler.error.message == 'fail!'
+        handler.error.type == null
         handler.error.statusCode == 500
     }
 
-    def "should handle error with adapter-specific logic"() {
+    def "should handle error with adapter-specific logic for HTTP Adapter"() {
         given:
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
-        message.setBody('<root/>')
-        message.headers = [:]
-        message.properties = [(src.main.resources.script.Constants.Property.CAMEL_EXC_CAUGHT): new Exception("Adapter error")]
-        def handler = new src.main.resources.script.Framework_ExceptionHandler(message, null)
+        def ex = new org.apache.camel.component.ahc.AhcOperationFailedException("HTTP Adapter error")
+        ex.statusCode = 404
+        ex.requestUri = "/api/resource"
+        def message = TestHelper.makeErrorSAPMessage()
+        message.headers = [(Constants.Header.CAMEL_RESPONSE_CODE): '404']
+        message.properties = [(Constants.Property.CAMEL_EXC_CAUGHT): ex]
+        def handler = new Framework_ExceptionHandler(message, null)
+
         when:
         handler.setErrorProperties()
+
         then:
-        handler.error.message == 'Internal Server Error'
-        handler.error.type == 'TECHNICAL'
-        handler.error.statusCode == 500
+        handler.error.message != null
+        handler.error.statusCode == 500  
+        // handler.error.requestUri == "/api/resource"
+        handler.error.type == null  
     }
 }

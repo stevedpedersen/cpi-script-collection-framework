@@ -91,7 +91,7 @@ class Framework_Logger {
             if (this.logLevel == "ERROR") {
                 def errorLocation = properties.get("errorLocation")
                 def errorStepID = properties.get(Constants.Property.SAP_ERR_STEP_ID)
-                def errorType = properties.get(Constants.ILCD.ExceptionHandler.ERR_TYPE_PROPERTY)
+                def errorType = properties.get(Constants.ILCD.ExceptionHandler.PROP_ERR_TYPE)
                 def isSoftError = properties.get(Constants.SoftError.PROP_IS_SOFT_ERROR)
                 if (!errorLocation) {
                     def ex = properties.get(Constants.Property.CAMEL_EXC_CAUGHT)
@@ -100,7 +100,7 @@ class Framework_Logger {
                         errorLocation = "${Constants.Property.SAP_ERR_STEP_ID}: ${errorStepID} | BTP CI Exception ${exClass}"
                     }
                 } // Enhance the error log entry with some extra info.
-                logEntry += [errorLocation: errorLocation, errorStepID: errorStepID, errorType: errorType, isSoftError: isSoftError]
+                logEntry += [errorLocation: errorLocation, errorStepID: errorStepID, errorType: errorType]
             }
 
             def customLogFields = parseCustomAttributes(properties)

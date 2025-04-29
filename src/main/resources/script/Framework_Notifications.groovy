@@ -30,7 +30,7 @@ class Framework_Notifications {
         def results = resolveEmailRecipients(jsonObject, projectName, integrationID)
 
         // We can set the errorType in the subject after resolving the email recipients
-        String emailSubject = "BTP CI - ${meta_environment} - ${meta_integrationName} [${results.errorType} ERROR]"
+        String emailSubject = "BTP CI - ${meta_environment} - ${meta_integrationName}"
         message.setProperty("emailSubject", emailSubject)
 
         // Generate an HTML table row containing a link to the MPL/cALM dashboard for this message
@@ -75,7 +75,7 @@ class Framework_Notifications {
      */
     private String resolveErrorType(def jsonObject, String projectName, String integrationID) {
         def errTypeFallback = Constants.ILCD.ExceptionHandler.VM_KEY_EMAIL_RECIP_TECH
-        def errTypeProp = this.message ? this.message.getProperty(Constants.ILCD.ExceptionHandler.ERR_TYPE_PROPERTY) : null
+        def errTypeProp = this.message ? this.message.getProperty(Constants.ILCD.ExceptionHandler.PROP_ERR_TYPE) : null
         def errTypeJson = jsonObject?.errorType ? jsonObject.errorType.toString()?.toUpperCase() : jsonObject[Constants.ILCD.ExceptionHandler.MPL_CH_ERR_TYPE]
         def errTypeJsonMsgs = (jsonObject?.messages ?: []).findResult(errTypeFallback, { it?.errorType })
         def errorType = errTypeProp ?: errTypeJson ?: errTypeJsonMsgs ?: errTypeFallback
@@ -164,7 +164,7 @@ class Framework_Notifications {
         messages.each { msgMap ->
             sb.append("<dl style='font-size:0.8rem;margin-bottom:0.8em;'>")
             msgMap.each { k, v ->
-                def style = k.equalsIgnoreCase("logLevel") ? error : ""
+                def style = k.equalsIgnoreCase("logLevel") && v.equalsIgnoreCase("ERROR") ? error : ""
                 sb.append("<dt><b ${style}>${escapeHtml(k)}</b></dt>")
                 sb.append("<dd ${style}>${escapeHtml(v)}</dd>")
             }
