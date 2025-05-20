@@ -127,16 +127,7 @@ task testConst(type: Test) {
     reports.html.outputLocation = layout.buildDirectory.dir("reports/tests/ConstantsSpec")
 }
 
-// Composite task: Runs all per-spec test tasks in sequence
-// Usage: ./gradlew testAll
-// Reports: build/reports/tests/<SpecName>/index.html for each
-//
-task testAll {
-    group = 'verification'
-    description = 'Runs all per-spec test tasks (testNotif, testUtils, testLogger, testExc, testVM, testConst)'
-    dependsOn 'test'
-    dependsOn testNotif, testUtils, testLogger, testExc, testVM, testConst
-}
+
 
 // Composite task: Cleans, then runs all per-spec test tasks in parallel
 // Usage: ./gradlew testAllCleanParallel
@@ -145,8 +136,9 @@ task testAll {
 task testAllCleanParallel {
     group = 'verification'
     description = 'Cleans, then runs all per-spec test tasks (testNotif, testUtils, testLogger, testExc, testVM, testConst) in parallel.'
-    dependsOn 'clean', 'test', testNotif, testUtils, testLogger, testExc, testVM, testConst
-    mustRunAfter 'clean'
+    dependsOn test, testNotif, testUtils, testLogger, testExc, testVM, testConst
+    mustRunAfter clean
+    
 }
 
 gradle.taskGraph.whenReady { graph ->
@@ -159,6 +151,18 @@ gradle.taskGraph.whenReady { graph ->
 tasks.register('aggregateTestReport', TestReport) {
     testResults.from(tasks.withType(Test))
     destinationDirectory = layout.buildDirectory.dir('reports/all-tests')
+}
+
+// Composite task: Runs all per-spec test tasks in sequence
+// Usage: ./gradlew testAll
+// Reports: build/reports/tests/<SpecName>/index.html for each
+//
+task testAll {
+    group = 'verification'
+    description = 'Runs all per-spec test tasks (testNotif, testUtils, testLogger, testExc, testVM, testConst)'
+    dependsOn 'clean', 'test'
+    dependsOn testNotif, testUtils, testLogger, testExc, testVM, testConst
+    finalizedBy aggregateTestReport
 }
 
 // =======================

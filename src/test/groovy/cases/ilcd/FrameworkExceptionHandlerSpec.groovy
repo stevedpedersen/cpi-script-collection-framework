@@ -9,15 +9,20 @@ import com.sap.it.api.msglog.MessageLog
 import cases.ilcd.TestHelper
 
 class FrameworkExceptionHandlerSpec extends Specification {
+    def makeExc(Map opts = [:]) {
+        def msg = TestHelper.makeSAPMessage(opts)
+        msg.properties = msg.properties ?: [:]
+        msg.headers = msg.headers ?: [:]
+        msg.properties.putAll(opts.props ?: [:])
+        msg.headers.putAll(opts.headers ?: [:])
+        msg.exchange = msg.exchange ?: [ context: [ version: '3.14.7', uptime: 12345 ] ]
+        msg.setBody(opts?.body)
+        return new Framework_ExceptionHandler(msg, new MessageLog())
+    }
     def "should parse error from XML with <property id='error'>"() {
         given:
         def xml = '''<root><processActionReturn>&lt;root&gt;&lt;property id="error"&gt;Something went wrong&lt;/property&gt;&lt;/root&gt;</processActionReturn></root>'''
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
-        message.setBody(xml)
-        message.headers = [:]
-        message.properties = [:]
-        def messageLog = new com.sap.it.api.msglog.MessageLog()
-        def handler = new Framework_ExceptionHandler(message, messageLog)
+        def handler = makeExc([body: xml])
 
         when:
         handler.setErrorProperties()
@@ -31,12 +36,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
     def "should parse error from XML with <property id='status'>FAILED"() {
         given:
         def xml = '''<root><processActionReturn>&lt;root&gt;&lt;property id="status"&gt;FAILED&lt;/property&gt;&lt;/root&gt;</processActionReturn></root>'''
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
-        message.setBody(xml)
-        message.headers = [:]
-        message.properties = [:]
-        def messageLog = new com.sap.it.api.msglog.MessageLog()
-        def handler = new Framework_ExceptionHandler(message, messageLog)
+        def handler = makeExc([body: xml])
 
         when:
         handler.setErrorProperties()
@@ -50,12 +50,7 @@ class FrameworkExceptionHandlerSpec extends Specification {
     def "should not set error if XML is clean"() {
         given:
         def xml = '''<root><processActionReturn>&lt;root&gt;&lt;property id="status"&gt;SUCCESS&lt;/property&gt;&lt;/root&gt;</processActionReturn></root>'''
-        def message = new com.sap.gateway.ip.core.customdev.util.Message()
-        message.setBody(xml)
-        message.headers = [:]
-        message.properties = [:]
-        def messageLog = new com.sap.it.api.msglog.MessageLog()
-        def handler = new Framework_ExceptionHandler(message, messageLog)
+        def handler = makeExc([body: xml])
 
         when:
         handler.setErrorProperties()

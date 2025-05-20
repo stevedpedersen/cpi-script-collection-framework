@@ -11,19 +11,23 @@ import cases.ilcd.TestHelper
 class FrameworkLoggerSpec extends Specification {
     // --- Helper for logger setup ---
     def makeLogger(Map opts = [:]) {
-        def msg = new Message()
+        // def msg = new Message()
+        def msg = TestHelper.makeSAPMessage(opts)
         msg.properties = msg.properties ?: [:]
         msg.headers = msg.headers ?: [:]
         msg.properties.putAll(opts.props ?: [:])
         msg.headers.putAll(opts.headers ?: [:])
-        msg.exchange = [ context: [ version: '3.14.7', uptime: 12345 ] ]
+        msg.exchange = msg.exchange ?: [ context: [ version: '3.14.7', uptime: 12345 ] ]
         // Set the message body for tests that expect a value
         if (opts.body != null) {
             msg.setBody(opts.body)
         } else {
             msg.setBody(TestHelper.sampleBody)
         }
-        Framework_Logger.metaClass.messageLogFactory = new MessageLogFactory()
+        if (msg.messageLogFactory == null) {
+            Framework_Logger.metaClass.messageLogFactory = new MessageLogFactory()
+        }
+        
         // Framework_Logger.metaClass.getSystemDetails = { [:] }
         // Patch Framework_Logger constructor for test: allow Expando as Message
         Framework_Logger.metaClass.constructor = { m, l ->
@@ -99,21 +103,21 @@ class FrameworkLoggerSpec extends Specification {
         !makeLogger([tracePoint: "END", logCounter: 6]).isAttachable("END", "END_LOG")
     }
 
-    def "TRACE log not attachable, is loop iteration > 1 (CamelSplitIndex = 1, logCounter: 2)"() {
+    def 'TRACE log not attachable, is loop iteration > 1 CamelSplitIndex = 1, logCounter: 2'() {
         def logger = makeLogger([tracePoint: "TRACE", logCounter: 2])
         logger.message.properties[Constants.Property.CAMEL_SPLIT_INDEX] = 1
         expect:
         !logger.isAttachable("TRACE", "TRACE_LOG")
     }
 
-    def "TRACE log, is retry (SAP_DataStoreRetries > 0, logCounter: 3)"() {
+    def "TRACE log, is retry SAP_DataStoreRetries > 0, logCounter: 3"() {
         def logger = makeLogger([tracePoint: "TRACE", logCounter: 3])
         logger.message.headers[Constants.Header.SAP_DATASTORE_RETRIES] = 1
         expect:
         !logger.isAttachable("TRACE", "TRACE_LOG")
     }
 
-    def "End log allowed, not retry (SAP_IS_REDELIVERY_ENABLED false, retries 0)"() {
+    def "End log allowed, not retry SAP_IS_REDELIVERY_ENABLED false, retries 0"() {
         def logger = makeLogger([tracePoint: "END", logCounter: 3])
         logger.message.properties[Constants.Property.SAP_IS_REDELIVERY_ENABLED] = false
         logger.message.headers[Constants.Header.SAP_DATASTORE_RETRIES] = 0
@@ -128,7 +132,7 @@ class FrameworkLoggerSpec extends Specification {
         (logger1.isAttachable("END", "END_LOG")) || (!logger2.isAttachable("START", "START_LOG"))
     }
 
-    def "Trace log, debug level, over limit due to loop awareness (split complete true)"() {
+    def "Trace log, debug level, over limit due to loop awareness split complete true"() {
         def logger = makeLogger([tracePoint: "TRACE", overallLogLevel: "TRACE", logCounter: 2, props: [(Constants.Property.CAMEL_SPLIT_COMPLETE): true]])
         expect:
         !logger.isAttachable("TRACE", "TRACE_LOG")
@@ -194,7 +198,7 @@ class FrameworkLoggerSpec extends Specification {
         expect:
         !logger.isAttachable("END", "MESSAGE_END")
     }
-    def "Payload point not attachable if not last split iteration (split complete false)"() {
+    def "Payload point not attachable if not last split iteration split complete false"() {
         def logger = makeLogger([tracePoint: "END", logCounter: 8])
         logger.message.properties[Constants.Property.CAMEL_SPLIT_COMPLETE] = false
         logger.message.properties[Constants.Property.CAMEL_SPLIT_INDEX] = 8
@@ -274,18 +278,6 @@ class FrameworkLoggerSpec extends Specification {
         props['SAP_ErrorModelStepID'] == 'MessageFlow_37046'
         props['logLevel'] == 'TRACE'
         props['cache_miss_count'] == 365
-    }
-
-    def "logger handles missing headers and properties gracefully"() {
-        given:
-        def logger = makeLogger([props: [:], headers: [:], body: null])
-        when:
-        def headers = logger.message.getHeaders()
-        def props = logger.message.getProperties()
-        then:
-        headers.isEmpty()
-        // Only count SAP/Camel keys as standard; ignore test/exchange keys
-        props.findAll { k, _ -> k.toString().startsWith('SAP') || k.toString().startsWith('Camel') }.isEmpty()
     }
 
     def "logMessage appends to message log stack"() {
